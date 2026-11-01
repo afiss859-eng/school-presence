@@ -397,15 +397,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const authenticatedUser = user;
-    const client = supabase;
-    if (!authenticatedUser || !client) {
+    if (!user || !supabase) {
       setMemberships([]);
       setMembershipsLoading(false);
       setMembershipError("");
       return;
     }
 
+    const authenticatedUser: User = user;
+    const client: NonNullable<typeof supabase> = supabase;
     let cancelled = false;
     setMembershipsLoading(true);
     setMembershipError("");
