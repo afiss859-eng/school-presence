@@ -88,6 +88,7 @@ supabase/
     20261101000600_auth_and_data_api_security.sql
     20261101000700_private_rls_helpers.sql
     20261101000800_class_overview.sql
+    20261101000900_restore_school_creator_insert.sql
 ```
 
 ## Feuille de route
