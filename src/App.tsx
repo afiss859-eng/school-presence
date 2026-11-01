@@ -19,24 +19,13 @@ import {
   Users,
   X
 } from "lucide-react";
-import type { AttendanceStatus, StudentAttendance } from "./lib/domain";
+import type { AttendanceStatus } from "./lib/domain";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import AuthScreen from "./components/AuthScreen";
 import SchoolOnboarding from "./components/SchoolOnboarding";
 
 type Page = "overview" | "attendance" | "life" | "classes" | "students" | "reports";
-
-const initialStudents: StudentAttendance[] = [
-  { id: "s-01", firstName: "Aminata", lastName: "Ouédraogo", studentCode: "SP-001", status: "present" },
-  { id: "s-02", firstName: "Issa", lastName: "Traoré", studentCode: "SP-002", status: "absent" },
-  { id: "s-03", firstName: "Mariama", lastName: "Sawadogo", studentCode: "SP-003", status: "present" },
-  { id: "s-04", firstName: "Adama", lastName: "Kaboré", studentCode: "SP-004", status: "late" },
-  { id: "s-05", firstName: "Fatou", lastName: "Zongo", studentCode: "SP-005", status: "present" },
-  { id: "s-06", firstName: "Moussa", lastName: "Compaoré", studentCode: "SP-006", status: "present" },
-  { id: "s-07", firstName: "Aïcha", lastName: "Diallo", studentCode: "SP-007", status: "absent" },
-  { id: "s-08", firstName: "Oumar", lastName: "Bationo", studentCode: "SP-008", status: "present" }
-];
 
 const navigation = [
   { id: "overview" as const, label: "Vue d’ensemble", icon: LayoutDashboard },
@@ -103,12 +92,18 @@ interface DashboardProps {
 
 function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: DashboardProps) {
   const [page, setPage] = useState<Page>("overview");
-  const [students, setStudents] = useState<StudentAttendance[]>(initialStudents);
-  const [selectedClass, setSelectedClass] = useState("3e A");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [search, setSearch] = useState("");
-  const [saved, setSaved] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedAttendanceClassId, setSelectedAttendanceClassId] = useState("");
+  const [attendancePeriod, setAttendancePeriod] = useState("Cours du matin");
+  const [attendanceStudents, setAttendanceStudents] = useState<SchoolStudent[]>([]);
+  const [attendanceStudentsLoading, setAttendanceStudentsLoading] = useState(false);
+  const [attendanceStudentsError, setAttendanceStudentsError] = useState("");
+  const [attendanceMarks, setAttendanceMarks] = useState<Record<string, AttendanceStatus>>({});
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [attendanceSaveError, setAttendanceSaveError] = useState("");
+  const [attendanceSavedSessionId, setAttendanceSavedSessionId] = useState<string | null>(null);
 
   const dbClient = supabase;
   const isSchoolAdmin = roleCode === "school_admin" || roleCode === "super_admin";
@@ -153,6 +148,9 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
         setSelectedStudentClassId((current) =>
           rows.some((item) => item.id === current) ? current : (rows[0]?.id ?? "")
         );
+        setSelectedAttendanceClassId((current) =>
+          rows.some((item) => item.id === current) ? current : (rows[0]?.id ?? "")
+        );
       }
       setClassesLoading(false);
     }
@@ -195,6 +193,50 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     void loadStudents();
     return () => { cancelled = true; };
   }, [dbClient, school.id, selectedStudentClassId, studentsRefresh]);
+
+  useEffect(() => {
+    if (!dbClient || !selectedAttendanceClassId) {
+      setAttendanceStudents([]);
+      setAttendanceStudentsLoading(false);
+      setAttendanceStudentsError("");
+      return;
+    }
+    const client: NonNullable<typeof dbClient> = dbClient;
+    let cancelled = false;
+    setAttendanceStudentsLoading(true);
+    setAttendanceStudentsError("");
+    setAttendanceSavedSessionId(null);
+
+    async function loadAttendanceStudents() {
+      const { data, error } = await client
+        .from("students")
+        .select("id, first_name, last_name, student_code, current_class_id")
+        .eq("school_id", school.id)
+        .eq("current_class_id", selectedAttendanceClassId)
+        .eq("is_active", true)
+        .order("last_name", { ascending: true });
+
+      if (cancelled) return;
+      if (error) {
+        setAttendanceStudentsError(error.message);
+        setAttendanceStudents([]);
+      } else {
+        const rows = (data ?? []) as SchoolStudent[];
+        setAttendanceStudents(rows);
+        setAttendanceMarks((current) => {
+          const next: Record<string, AttendanceStatus> = {};
+          rows.forEach((student) => {
+            next[student.id] = current[student.id] ?? "present";
+          });
+          return next;
+        });
+      }
+      setAttendanceStudentsLoading(false);
+    }
+
+    void loadAttendanceStudents();
+    return () => { cancelled = true; };
+  }, [dbClient, school.id, selectedAttendanceClassId]);
 
   const visibleSchoolStudents = schoolStudents.filter((student) => {
     const fullName = (student.first_name + " " + student.last_name).toLowerCase();
@@ -255,32 +297,58 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     }
   }
 
-  const totals = useMemo(() => {
-    return students.reduce(
+  const attendanceTotals = useMemo(() => {
+    return attendanceStudents.reduce(
       (result, student) => {
-        result[student.status] += 1;
+        result[attendanceMarks[student.id] ?? "present"] += 1;
         return result;
       },
       { present: 0, absent: 0, late: 0 }
     );
-  }, [students]);
+  }, [attendanceStudents, attendanceMarks]);
 
-  const filteredStudents = students.filter((student) => {
-    const fullName = (student.firstName + " " + student.lastName).toLowerCase();
-    return fullName.includes(search.toLowerCase()) || student.studentCode.toLowerCase().includes(search.toLowerCase());
+  const filteredAttendanceStudents = attendanceStudents.filter((student) => {
+    const fullName = (student.first_name + " " + student.last_name).toLowerCase();
+    const studentCode = (student.student_code ?? "").toLowerCase();
+    const query = attendanceSearch.toLowerCase();
+    return fullName.includes(query) || studentCode.includes(query);
   });
 
-  function setStudentStatus(studentId: string, status: AttendanceStatus) {
-    setStudents((current) =>
-      current.map((student) => (student.id === studentId ? { ...student, status } : student))
-    );
-    setSaved(false);
+  function setAttendanceMark(studentId: string, status: AttendanceStatus) {
+    setAttendanceMarks((current) => ({ ...current, [studentId]: status }));
+    setAttendanceSavedSessionId(null);
+    setAttendanceSaveError("");
+  }
+
+  async function handleSubmitAttendance() {
+    if (!dbClient || !selectedAttendanceClassId || attendanceStudents.length === 0) return;
+    setAttendanceSaving(true);
+    setAttendanceSaveError("");
+    setAttendanceSavedSessionId(null);
+    try {
+      const records = attendanceStudents.map((student) => ({
+        student_id: student.id,
+        status: attendanceMarks[student.id] ?? "present"
+      }));
+      const { data, error } = await dbClient.rpc("submit_attendance", {
+        p_school_id: school.id,
+        p_class_id: selectedAttendanceClassId,
+        p_session_date: selectedDate,
+        p_period_label: attendancePeriod.trim() || "Cours",
+        p_records: records
+      });
+      if (error) throw error;
+      setAttendanceSavedSessionId(String(data));
+    } catch (caught) {
+      setAttendanceSaveError(caught instanceof Error ? caught.message : "Impossible d’enregistrer l’appel.");
+    } finally {
+      setAttendanceSaving(false);
+    }
   }
 
   function changePage(nextPage: Page) {
     setPage(nextPage);
     setMobileMenuOpen(false);
-    setSaved(false);
   }
 
   const activePage = navigation.find((item) => item.id === page)?.label ?? "Vue d’ensemble";
@@ -429,41 +497,57 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
           {page === "attendance" && (
             <section className="panel call-panel">
               <div className="panel-heading call-heading">
-                <div><h2>Registre d’appel</h2><p>Marquez chaque élève présent, absent ou en retard.</p></div>
+                <div><h2>Registre d’appel</h2><p>Les présents, absents et retards seront enregistrés dans la base de données.</p></div>
                 <div className="call-controls">
-                  <label className="select-control"><span>Classe</span><select value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)}><option>3e A</option><option>6e A</option><option>5e B</option><option>2nde C</option></select></label>
-                  <label className="select-control"><span>Date</span><input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+                  <label className="select-control"><span>Classe</span><select value={selectedAttendanceClassId} onChange={(event) => { setSelectedAttendanceClassId(event.target.value); setAttendanceSavedSessionId(null); }} disabled={schoolClasses.length === 0}><option value="">Sélectionner une classe</option>{schoolClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}</select></label>
+                  <label className="select-control"><span>Date</span><input type="date" value={selectedDate} onChange={(event) => { setSelectedDate(event.target.value); setAttendanceSavedSessionId(null); }} /></label>
+                  <label className="select-control"><span>Période / cours</span><input value={attendancePeriod} onChange={(event) => { setAttendancePeriod(event.target.value); setAttendanceSavedSessionId(null); }} maxLength={80} /></label>
                 </div>
               </div>
               <div className="call-summary">
-                <span><i className="summary-dot green-dot" /> Présents <strong>{totals.present}</strong></span>
-                <span><i className="summary-dot orange-dot" /> Absents <strong>{totals.absent}</strong></span>
-                <span><i className="summary-dot purple-dot" /> Retards <strong>{totals.late}</strong></span>
-                <div className="search-field"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un élève..." /></div>
+                <span><i className="summary-dot green-dot" /> Présents <strong>{attendanceTotals.present}</strong></span>
+                <span><i className="summary-dot orange-dot" /> Absents <strong>{attendanceTotals.absent}</strong></span>
+                <span><i className="summary-dot purple-dot" /> Retards <strong>{attendanceTotals.late}</strong></span>
+                <div className="search-field"><Search size={16} /><input value={attendanceSearch} onChange={(event) => setAttendanceSearch(event.target.value)} placeholder="Rechercher un élève…" /></div>
               </div>
-              <div className="student-list">
-                <div className="student-row student-head"><span>ÉLÈVE</span><span>IDENTIFIANT</span><span>STATUT</span></div>
-                {filteredStudents.map((student) => (
-                  <div className="student-row" key={student.id}>
-                    <div className="student-name"><span className="student-initials">{student.firstName[0]}{student.lastName[0]}</span><strong>{student.firstName} {student.lastName}</strong></div>
-                    <span className="student-code">{student.studentCode}</span>
-                    <div className="status-actions">
-                      {(["present", "absent", "late"] as AttendanceStatus[]).map((status) => (
-                        <button key={status} className={"status-choice " + status + (student.status === status ? " selected" : "")} onClick={() => setStudentStatus(student.id, status)}>
-                          {status === "present" && <Check size={14} />}{status === "absent" && <X size={14} />}{status === "late" && <Clock3 size={14} />}
-                          <span>{statusLabels[status]}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                {filteredStudents.length === 0 && <div className="empty-state">Aucun élève ne correspond à cette recherche.</div>}
-              </div>
+              {attendanceStudentsError && <div className="inline-error"><strong>Impossible de charger les élèves.</strong><p>{attendanceStudentsError}</p></div>}
+              {schoolClasses.length === 0 ? (
+                <div className="empty-data-state"><Users size={24} /><strong>Aucune classe accessible</strong><p>Ajoutez une classe ou demandez à la direction de vous affecter à une classe.</p></div>
+              ) : attendanceStudentsLoading ? (
+                <div className="empty-data-state">Chargement de la liste des élèves…</div>
+              ) : attendanceStudents.length === 0 ? (
+                <div className="empty-data-state"><Users size={24} /><strong>Aucun élève dans cette classe</strong><p>Inscrivez les élèves avant de faire l’appel.</p></div>
+              ) : (
+                <div className="student-list">
+                  <div className="student-row student-head"><span>ÉLÈVE</span><span>MATRICULE</span><span>STATUT</span></div>
+                  {filteredAttendanceStudents.map((student) => {
+                    const currentStatus = attendanceMarks[student.id] ?? "present";
+                    return (
+                      <div className="student-row" key={student.id}>
+                        <div className="student-name"><span className="student-initials">{student.first_name[0]}{student.last_name[0]}</span><strong>{student.first_name} {student.last_name}</strong></div>
+                        <span className="student-code">{student.student_code || "—"}</span>
+                        <div className="status-actions">
+                          {(["present", "absent", "late"] as AttendanceStatus[]).map((status) => (
+                            <button key={status} className={"status-choice " + status + (currentStatus === status ? " selected" : "")} onClick={() => setAttendanceMark(student.id, status)}>
+                              {status === "present" && <Check size={14} />}{status === "absent" && <X size={14} />}{status === "late" && <Clock3 size={14} />}
+                              <span>{statusLabels[status]}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredAttendanceStudents.length === 0 && <div className="empty-state">Aucun élève ne correspond à cette recherche.</div>}
+                </div>
+              )}
               <div className="call-footer">
-                <span>{students.length} élèves dans cette démonstration · {formatDate(selectedDate)}</span>
-                <button className="primary-button" onClick={() => setSaved(true)}><Check size={17} /> {saved ? "Appel préparé" : "Préparer l’enregistrement"}</button>
+                <span>{attendanceStudents.length} élèves · {formatDate(selectedDate)}</span>
+                <button className="primary-button" onClick={handleSubmitAttendance} disabled={attendanceSaving || attendanceStudentsLoading || attendanceStudents.length === 0 || Boolean(attendanceSavedSessionId)}>
+                  <Check size={17} /> {attendanceSaving ? "Enregistrement…" : attendanceSavedSessionId ? "Appel enregistré" : "Enregistrer l’appel"}
+                </button>
               </div>
-              {saved && <p className="success-note">L’appel a été mis à jour dans cette démonstration locale. La sauvegarde en base sera activée avec l’authentification Supabase.</p>}
+              {attendanceSaveError && <p className="form-error">{attendanceSaveError}</p>}
+              {attendanceSavedSessionId && <p className="success-note">Appel transmis à la base de données. Référence de séance : {attendanceSavedSessionId}</p>}
             </section>
           )}
 
