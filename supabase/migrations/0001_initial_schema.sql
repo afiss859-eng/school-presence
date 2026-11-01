@@ -134,6 +134,7 @@ create table public.attendance_records (
   recorded_by uuid not null references auth.users(id),
   recorded_at timestamptz not null default now(),
   operation_id uuid not null default gen_random_uuid(),
+  unique (id, school_id),
   unique (session_id, student_id),
   unique (operation_id),
   foreign key (session_id, school_id)
