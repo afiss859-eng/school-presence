@@ -138,7 +138,12 @@ drop policy if exists "life_school_reviews_justifications" on public.attendance_
 create policy "schools_select_members_or_guardians"
   on public.schools for select to authenticated
   using (
-    app_private.is_school_staff(id)
+    exists (
+      select 1 from public.school_members m
+      where m.school_id = schools.id
+        and m.user_id = auth.uid()
+        and m.is_active = true
+    )
     or exists (
       select 1 from public.student_guardians g
       where g.school_id = schools.id
