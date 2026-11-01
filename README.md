@@ -90,6 +90,7 @@ supabase/
     20261101000800_class_overview.sql
     20261101000900_restore_school_creator_insert.sql
     20261101001000_submit_attendance.sql
+    20261101001100_attendance_resubmission_safety.sql
 ```
 
 ## Feuille de route
