@@ -76,7 +76,20 @@ grant usage on type public.attendance_session_status to authenticated;
 grant usage on type public.disciplinary_event_type to authenticated;
 grant usage on type public.justification_status to authenticated;
 
-revoke all on all tables in schema public from anon;
+revoke all on
+  public.profiles,
+  public.schools,
+  public.school_members,
+  public.academic_years,
+  public.classes,
+  public.students,
+  public.student_guardians,
+  public.class_assignments,
+  public.attendance_sessions,
+  public.attendance_records,
+  public.disciplinary_events,
+  public.attendance_justifications
+from anon;
 
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.schools to authenticated;
