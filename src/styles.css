@@ -332,3 +332,5 @@ h1 { margin-bottom: 6px; color: #172e50; font: 800 24px "Manrope",sans-serif; le
   .student-directory-row .student-name { gap: 6px; }
   .student-directory-row .student-name strong { font-size: 9px; }
 }
+/* Allow attendance controls to wrap on small screens */
+.call-controls { flex-wrap: wrap; }
