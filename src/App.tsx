@@ -134,12 +134,13 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
 
   useEffect(() => {
     if (!dbClient) return;
+    const client: NonNullable<typeof dbClient> = dbClient;
     let cancelled = false;
     setClassesLoading(true);
     setClassesError("");
 
     async function loadClasses() {
-      const { data, error } = await dbClient.rpc("get_school_class_overview", {
+      const { data, error } = await client.rpc("get_school_class_overview", {
         target_school_id: school.id
       });
       if (cancelled) return;
@@ -167,12 +168,13 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
       setSchoolStudentsError("");
       return;
     }
+    const client: NonNullable<typeof dbClient> = dbClient;
     let cancelled = false;
     setSchoolStudentsLoading(true);
     setSchoolStudentsError("");
 
     async function loadStudents() {
-      const { data, error } = await dbClient
+      const { data, error } = await client
         .from("students")
         .select("id, first_name, last_name, student_code, current_class_id")
         .eq("school_id", school.id)
