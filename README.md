@@ -26,7 +26,7 @@ Simplifier les appels, centraliser les informations de vie scolaire et améliore
 ## Variables d'environnement
 
 - \`VITE_SUPABASE_URL\` : URL du projet Supabase.
-- \`VITE_SUPABASE_ANON_KEY\` : clé publique/anon du projet.
+- \`VITE_SUPABASE_PUBLISHABLE_KEY\` : clé publique/anon du projet.
 
 Ne jamais placer une clé \`service_role\`, un mot de passe ou un secret serveur dans une variable \`VITE_*\` ou dans le navigateur.
 
