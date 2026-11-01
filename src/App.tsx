@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   Activity,
   Bell,
@@ -13,6 +13,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   Menu,
+  Plus,
   Search,
   ShieldAlert,
   Users,
@@ -24,7 +25,7 @@ import type { User } from "@supabase/supabase-js";
 import AuthScreen from "./components/AuthScreen";
 import SchoolOnboarding from "./components/SchoolOnboarding";
 
-type Page = "overview" | "attendance" | "life" | "classes" | "reports";
+type Page = "overview" | "attendance" | "life" | "classes" | "students" | "reports";
 
 const initialStudents: StudentAttendance[] = [
   { id: "s-01", firstName: "Aminata", lastName: "Ouédraogo", studentCode: "SP-001", status: "present" },
@@ -41,7 +42,8 @@ const navigation = [
   { id: "overview" as const, label: "Vue d’ensemble", icon: LayoutDashboard },
   { id: "attendance" as const, label: "Faire l’appel", icon: ClipboardCheck },
   { id: "life" as const, label: "Vie scolaire", icon: ShieldAlert },
-  { id: "classes" as const, label: "Classes et élèves", icon: Users },
+  { id: "classes" as const, label: "Classes", icon: BookOpen },
+  { id: "students" as const, label: "Élèves", icon: Users },
   { id: "reports" as const, label: "Rapports", icon: FileBarChart }
 ];
 
@@ -74,15 +76,32 @@ interface SchoolMembership {
   school: SchoolInfo | null;
 }
 
+interface SchoolClass {
+  id: string;
+  name: string;
+  level: string | null;
+  class_mode: string;
+  student_count: number;
+}
+
+interface SchoolStudent {
+  id: string;
+  first_name: string;
+  last_name: string;
+  student_code: string | null;
+  current_class_id: string | null;
+}
+
 interface DashboardProps {
   school: SchoolInfo;
   role: string;
+  roleCode: string;
   userEmail: string;
   userName: string;
   onSignOut: () => void;
 }
 
-function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardProps) {
+function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: DashboardProps) {
   const [page, setPage] = useState<Page>("overview");
   const [students, setStudents] = useState<StudentAttendance[]>(initialStudents);
   const [selectedClass, setSelectedClass] = useState("3e A");
@@ -90,6 +109,149 @@ function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardPr
   const [search, setSearch] = useState("");
   const [saved, setSaved] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const dbClient = supabase;
+  const isSchoolAdmin = roleCode === "school_admin" || roleCode === "super_admin";
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [classesError, setClassesError] = useState("");
+  const [classesRefresh, setClassesRefresh] = useState(0);
+  const [newClassName, setNewClassName] = useState("");
+  const [newClassLevel, setNewClassLevel] = useState("");
+  const [classSaving, setClassSaving] = useState(false);
+  const [classSaveError, setClassSaveError] = useState("");
+  const [selectedStudentClassId, setSelectedStudentClassId] = useState("");
+  const [schoolStudents, setSchoolStudents] = useState<SchoolStudent[]>([]);
+  const [schoolStudentsLoading, setSchoolStudentsLoading] = useState(false);
+  const [schoolStudentsError, setSchoolStudentsError] = useState("");
+  const [studentsRefresh, setStudentsRefresh] = useState(0);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [newStudentFirstName, setNewStudentFirstName] = useState("");
+  const [newStudentLastName, setNewStudentLastName] = useState("");
+  const [newStudentCode, setNewStudentCode] = useState("");
+  const [studentSaving, setStudentSaving] = useState(false);
+  const [studentSaveError, setStudentSaveError] = useState("");
+
+  useEffect(() => {
+    if (!dbClient) return;
+    let cancelled = false;
+    setClassesLoading(true);
+    setClassesError("");
+
+    async function loadClasses() {
+      const { data, error } = await dbClient.rpc("get_school_class_overview", {
+        target_school_id: school.id
+      });
+      if (cancelled) return;
+      if (error) {
+        setClassesError(error.message);
+        setSchoolClasses([]);
+      } else {
+        const rows = (data ?? []) as unknown as SchoolClass[];
+        setSchoolClasses(rows);
+        setSelectedStudentClassId((current) =>
+          rows.some((item) => item.id === current) ? current : (rows[0]?.id ?? "")
+        );
+      }
+      setClassesLoading(false);
+    }
+
+    void loadClasses();
+    return () => { cancelled = true; };
+  }, [dbClient, school.id, classesRefresh]);
+
+  useEffect(() => {
+    if (!dbClient || !selectedStudentClassId) {
+      setSchoolStudents([]);
+      setSchoolStudentsLoading(false);
+      setSchoolStudentsError("");
+      return;
+    }
+    let cancelled = false;
+    setSchoolStudentsLoading(true);
+    setSchoolStudentsError("");
+
+    async function loadStudents() {
+      const { data, error } = await dbClient
+        .from("students")
+        .select("id, first_name, last_name, student_code, current_class_id")
+        .eq("school_id", school.id)
+        .eq("current_class_id", selectedStudentClassId)
+        .eq("is_active", true)
+        .order("last_name", { ascending: true });
+
+      if (cancelled) return;
+      if (error) {
+        setSchoolStudentsError(error.message);
+        setSchoolStudents([]);
+      } else {
+        setSchoolStudents((data ?? []) as SchoolStudent[]);
+      }
+      setSchoolStudentsLoading(false);
+    }
+
+    void loadStudents();
+    return () => { cancelled = true; };
+  }, [dbClient, school.id, selectedStudentClassId, studentsRefresh]);
+
+  const visibleSchoolStudents = schoolStudents.filter((student) => {
+    const fullName = (student.first_name + " " + student.last_name).toLowerCase();
+    const code = (student.student_code ?? "").toLowerCase();
+    const query = studentSearch.toLowerCase();
+    return fullName.includes(query) || code.includes(query);
+  });
+
+  async function handleCreateClass(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dbClient || !isSchoolAdmin) return;
+    setClassSaveError("");
+    setClassSaving(true);
+    try {
+      const classMode = school.school_type === "primary"
+        ? "primary"
+        : school.school_type === "university" ? "university" : "secondary";
+      const { error } = await dbClient.from("classes").insert({
+        school_id: school.id,
+        name: newClassName.trim(),
+        level: newClassLevel.trim() || null,
+        class_mode: classMode
+      });
+      if (error) throw error;
+      setNewClassName("");
+      setNewClassLevel("");
+      setClassesRefresh((value) => value + 1);
+    } catch (caught) {
+      setClassSaveError(caught instanceof Error ? caught.message : "Impossible de créer la classe.");
+    } finally {
+      setClassSaving(false);
+    }
+  }
+
+  async function handleCreateStudent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dbClient || !isSchoolAdmin || !selectedStudentClassId) return;
+    setStudentSaveError("");
+    setStudentSaving(true);
+    try {
+      const { error } = await dbClient.from("students").insert({
+        school_id: school.id,
+        current_class_id: selectedStudentClassId,
+        first_name: newStudentFirstName.trim(),
+        last_name: newStudentLastName.trim(),
+        student_code: newStudentCode.trim() || null
+      });
+      if (error) throw error;
+      setNewStudentFirstName("");
+      setNewStudentLastName("");
+      setNewStudentCode("");
+      setStudentsRefresh((value) => value + 1);
+      setClassesRefresh((value) => value + 1);
+    } catch (caught) {
+      setStudentSaveError(caught instanceof Error ? caught.message : "Impossible d’ajouter cet élève.");
+    } finally {
+      setStudentSaving(false);
+    }
+  }
 
   const totals = useMemo(() => {
     return students.reduce(
@@ -201,7 +363,8 @@ function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardPr
                 {page === "overview" && "Voici ce qui se passe dans votre établissement aujourd’hui."}
                 {page === "attendance" && "Enregistrez rapidement la présence des élèves de votre classe."}
                 {page === "life" && "Retrouvez les événements et les éléments à traiter par la vie scolaire."}
-                {page === "classes" && "Consultez les classes et les effectifs de l’établissement."}
+                {page === "classes" && "Consultez les classes enregistrées dans votre établissement."}
+                {page === "students" && "Consultez les élèves et gérez leurs inscriptions par classe."}
                 {page === "reports" && "Suivez les indicateurs et préparez les rapports de votre établissement."}
               </p>
             </div>
@@ -210,7 +373,7 @@ function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardPr
 
           <div className="demo-notice">
             <span className="notice-icon"><Activity size={17} /></span>
-            <p><strong>Version de démarrage.</strong> Les noms et chiffres affichés sont fictifs. Les enregistrements restent dans cette démonstration et ne sont pas encore envoyés à une base de données.</p>
+            <p><strong>Version de démarrage.</strong> Les classes et les élèves sont chargés depuis Supabase. Les appels, indicateurs et rapports affichés ailleurs restent des exemples et ne sont pas encore enregistrés.</p>
             <button onClick={() => changePage("attendance")}>Tester un appel <span>→</span></button>
           </div>
 
@@ -313,18 +476,79 @@ function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardPr
           )}
 
           {page === "classes" && (
-            <section className="class-card-grid">
-              {[
-                ["6e A", "42", "1 enseignant principal"],
-                ["5e B", "38", "Équipe pédagogique"],
-                ["3e A", "34", "Équipe pédagogique"],
-                ["2nde C", "41", "Équipe pédagogique"]
-              ].map(([name, count, detail]) => (
-                <div className="panel class-card" key={name}>
-                  <div className="class-card-icon"><Users size={20} /></div><span className="class-level">CLASSE</span><h2>{name}</h2><p>{detail}</p>
-                  <div className="class-card-bottom"><strong>{count} <small>élèves</small></strong><button className="text-button" onClick={() => { setSelectedClass(name); changePage("attendance"); }}>Ouvrir l’appel →</button></div>
+            <>
+              {isSchoolAdmin && (
+                <form className="panel entity-create-form" onSubmit={handleCreateClass}>
+                  <div className="entity-form-heading"><div><h2>Créer une classe</h2><p>La classe sera enregistrée dans cet établissement.</p></div><span className="entity-form-icon"><Plus size={18} /></span></div>
+                  <div className="entity-form-fields">
+                    <label className="entity-field"><span>Nom de la classe</span><input value={newClassName} onChange={(event) => setNewClassName(event.target.value)} placeholder="Ex. 4e B" minLength={1} maxLength={80} required /></label>
+                    <label className="entity-field"><span>Niveau (facultatif)</span><input value={newClassLevel} onChange={(event) => setNewClassLevel(event.target.value)} placeholder="Ex. 4e" maxLength={80} /></label>
+                    <button className="primary-button" type="submit" disabled={classSaving || !newClassName.trim()}>{classSaving ? "Enregistrement…" : <><Plus size={16} /> Ajouter la classe</>}</button>
+                  </div>
+                  {classSaveError && <p className="form-error">{classSaveError}</p>}
+                </form>
+              )}
+              {classesError && <div className="panel inline-error"><strong>Impossible de charger les classes.</strong><p>{classesError}</p><button className="text-button" onClick={() => setClassesRefresh((value) => value + 1)}>Réessayer</button></div>}
+              {classesLoading ? (
+                <div className="panel empty-data-state">Chargement des classes…</div>
+              ) : schoolClasses.length === 0 ? (
+                <div className="panel empty-data-state"><Users size={25} /><strong>Aucune classe enregistrée</strong><p>Ajoutez les premières classes de votre établissement pour commencer à inscrire les élèves.</p></div>
+              ) : (
+                <section className="class-card-grid">
+                  {schoolClasses.map((schoolClass) => (
+                    <div className="panel class-card" key={schoolClass.id}>
+                      <div className="class-card-icon"><Users size={20} /></div>
+                      <span className="class-level">{schoolClass.level || schoolClass.class_mode}</span>
+                      <h2>{schoolClass.name}</h2>
+                      <p>{schoolClass.class_mode === "primary" ? "Organisation primaire" : schoolClass.class_mode === "university" ? "Groupe universitaire" : "Classe secondaire"}</p>
+                      <div className="class-card-bottom"><strong>{schoolClass.student_count} <small>élèves</small></strong><button className="text-button" onClick={() => { setSelectedStudentClassId(schoolClass.id); changePage("students"); }}>Voir les élèves →</button></div>
+                    </div>
+                  ))}
+                </section>
+              )}
+            </>
+          )}
+
+          {page === "students" && (
+            <section className="panel students-management-panel">
+              <div className="panel-heading students-heading">
+                <div><h2>Registre des élèves</h2><p>Les informations sont limitées aux classes accessibles à votre compte.</p></div>
+                <span className="counter-badge">{schoolStudents.length} élèves</span>
+              </div>
+              <div className="students-toolbar">
+                <label className="select-control"><span>Classe</span><select value={selectedStudentClassId} onChange={(event) => setSelectedStudentClassId(event.target.value)} disabled={schoolClasses.length === 0}><option value="">Sélectionner une classe</option>{schoolClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}</select></label>
+                <div className="search-field"><Search size={16} /><input value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Rechercher un élève…" /></div>
+              </div>
+              {isSchoolAdmin && selectedStudentClassId && (
+                <form className="student-create-form" onSubmit={handleCreateStudent}>
+                  <div className="entity-form-heading"><div><h2>Ajouter un élève</h2><p>L’élève sera inscrit dans la classe sélectionnée.</p></div><span className="entity-form-icon"><Plus size={18} /></span></div>
+                  <div className="entity-form-fields student-form-fields">
+                    <label className="entity-field"><span>Prénom</span><input value={newStudentFirstName} onChange={(event) => setNewStudentFirstName(event.target.value)} placeholder="Prénom" required maxLength={100} /></label>
+                    <label className="entity-field"><span>Nom</span><input value={newStudentLastName} onChange={(event) => setNewStudentLastName(event.target.value)} placeholder="Nom de famille" required maxLength={100} /></label>
+                    <label className="entity-field"><span>Matricule (facultatif)</span><input value={newStudentCode} onChange={(event) => setNewStudentCode(event.target.value)} placeholder="Ex. SP-2026-001" maxLength={60} /></label>
+                    <button className="primary-button" type="submit" disabled={studentSaving || !newStudentFirstName.trim() || !newStudentLastName.trim()}>{studentSaving ? "Enregistrement…" : <><Plus size={16} /> Ajouter</>}</button>
+                  </div>
+                  {studentSaveError && <p className="form-error">{studentSaveError}</p>}
+                </form>
+              )}
+              {schoolStudentsError && <div className="inline-error"><strong>Impossible de charger les élèves.</strong><p>{schoolStudentsError}</p><button className="text-button" onClick={() => setStudentsRefresh((value) => value + 1)}>Réessayer</button></div>}
+              {schoolClasses.length === 0 ? (
+                <div className="empty-data-state"><Users size={24} /><strong>Aucune classe accessible</strong><p>Créez une classe ou demandez à la direction de vous affecter à une classe.</p></div>
+              ) : schoolStudentsLoading ? (
+                <div className="empty-data-state">Chargement des élèves…</div>
+              ) : (
+                <div className="student-directory">
+                  <div className="student-directory-row student-directory-head"><span>ÉLÈVE</span><span>MATRICULE</span><span>CLASSE</span></div>
+                  {visibleSchoolStudents.map((student) => (
+                    <div className="student-directory-row" key={student.id}>
+                      <div className="student-name"><span className="student-initials">{student.first_name[0]}{student.last_name[0]}</span><strong>{student.first_name} {student.last_name}</strong></div>
+                      <span className="student-code">{student.student_code || "Non renseigné"}</span>
+                      <span className="student-code">{schoolClasses.find((item) => item.id === student.current_class_id)?.name ?? "—"}</span>
+                    </div>
+                  ))}
+                  {visibleSchoolStudents.length === 0 && <div className="empty-state">{studentSearch ? "Aucun élève ne correspond à la recherche." : "Aucun élève inscrit dans cette classe."}</div>}
                 </div>
-              ))}
+              )}
             </section>
           )}
 
@@ -494,6 +718,7 @@ export default function App() {
     <Dashboard
       school={membership.school}
       role={roleLabels[membership.role] ?? membership.role}
+      roleCode={membership.role}
       userEmail={user.email ?? ""}
       userName={String(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "Utilisateur")}
       onSignOut={() => { void client.auth.signOut(); }}
