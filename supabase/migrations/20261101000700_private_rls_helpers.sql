@@ -285,7 +285,12 @@ create policy "attendance_records_teacher_or_supervisor_create"
     and (
       app_private.is_school_staff(school_id)
       or exists (
-        select 1 from public.attendance_sessions s
+        select 1
+        from public.attendance_sessions s
+        join public.students st
+          on st.id = attendance_records.student_id
+         and st.school_id = attendance_records.school_id
+         and st.current_class_id = s.class_id
         where s.id = attendance_records.session_id
           and s.school_id = attendance_records.school_id
           and s.teacher_id = auth.uid()
@@ -310,7 +315,22 @@ create policy "attendance_records_teacher_or_supervisor_update"
   )
   with check (
     recorded_by = auth.uid()
-    or app_private.is_school_staff(school_id)
+    and (
+      app_private.is_school_staff(school_id)
+      or exists (
+        select 1
+        from public.attendance_sessions s
+        join public.students st
+          on st.id = attendance_records.student_id
+         and st.school_id = attendance_records.school_id
+         and st.current_class_id = s.class_id
+        where s.id = attendance_records.session_id
+          and s.school_id = attendance_records.school_id
+          and s.teacher_id = auth.uid()
+          and s.status <> 'closed'
+          and app_private.has_class_role(s.school_id, s.class_id, array['teacher']::public.school_role[])
+      )
+    )
   );
 
 create policy "disciplinary_events_staff_or_guardian_read"
@@ -329,6 +349,12 @@ create policy "teachers_create_course_expulsions"
   with check (
     event_type = 'course_expulsion'
     and recorded_by = auth.uid()
+    and exists (
+      select 1 from public.students st
+      where st.id = disciplinary_events.student_id
+        and st.school_id = disciplinary_events.school_id
+        and st.current_class_id = disciplinary_events.class_id
+    )
     and (
       app_private.is_school_staff(school_id)
       or app_private.has_class_role(school_id, class_id, array['teacher']::public.school_role[])
