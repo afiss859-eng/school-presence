@@ -397,7 +397,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user || !supabase) {
+    const authenticatedUser = user;
+    const client = supabase;
+    if (!authenticatedUser || !client) {
       setMemberships([]);
       setMembershipsLoading(false);
       setMembershipError("");
@@ -409,11 +411,10 @@ export default function App() {
     setMembershipError("");
 
     async function loadMemberships() {
-      if (!supabase) return;
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from("school_members")
         .select("id, school_id, role, schools(id, name, school_type, city)")
-        .eq("user_id", user.id)
+        .eq("user_id", authenticatedUser.id)
         .eq("is_active", true);
 
       if (cancelled) return;
@@ -441,7 +442,8 @@ export default function App() {
     return () => { cancelled = true; };
   }, [user, refreshToken]);
 
-  if (!isSupabaseConfigured || !supabase) {
+  const client = supabase;
+  if (!isSupabaseConfigured || !client) {
     return <SetupRequired />;
   }
 
@@ -462,7 +464,7 @@ export default function App() {
       <ConnectionError
         message={membershipError}
         onRetry={() => setRefreshToken((value) => value + 1)}
-        onSignOut={() => { void supabase.auth.signOut(); }}
+        onSignOut={() => { void client.auth.signOut(); }}
       />
     );
   }
@@ -473,7 +475,7 @@ export default function App() {
       <SchoolOnboarding
         user={user}
         onCreated={() => setRefreshToken((value) => value + 1)}
-        onSignOut={() => { void supabase.auth.signOut(); }}
+        onSignOut={() => { void client.auth.signOut(); }}
       />
     );
   }
@@ -494,7 +496,7 @@ export default function App() {
       role={roleLabels[membership.role] ?? membership.role}
       userEmail={user.email ?? ""}
       userName={String(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "Utilisateur")}
-      onSignOut={() => { void supabase.auth.signOut(); }}
+      onSignOut={() => { void client.auth.signOut(); }}
     />
   );
 }
