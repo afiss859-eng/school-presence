@@ -443,7 +443,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
 
           <div className="demo-notice">
             <span className="notice-icon"><Activity size={17} /></span>
-            <p><strong>Version de démarrage.</strong> Les classes et les élèves sont chargés depuis Supabase. Les appels, indicateurs et rapports affichés ailleurs restent des exemples et ne sont pas encore enregistrés.</p>
+            <p><strong>Version de démarrage.</strong> Les classes, les élèves et le registre d’appel sont connectés à Supabase. Les chiffres du tableau de bord, le registre de vie scolaire et les rapports restent démonstratifs.</p>
             <button onClick={() => changePage("attendance")}>Tester un appel <span>→</span></button>
           </div>
 
