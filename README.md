@@ -9,6 +9,7 @@ Simplifier les appels, centraliser les informations de vie scolaire et améliore
 ## Fonctions déjà préparées
 
 - Interface web responsive : tableau de bord, appel interactif, classes, vie scolaire et rapports de démonstration.
+- Gestion connectée des classes et des élèves via Supabase (création réservée à la direction, lecture filtrée par RLS).
 - Authentification e-mail/mot de passe avec Supabase Auth.
 - Création du premier établissement par le compte connecté.
 - Attribution automatique du rôle school_admin au créateur de l'établissement.
@@ -86,16 +87,17 @@ supabase/
     20261101000500_school_creation_rpc_only.sql
     20261101000600_auth_and_data_api_security.sql
     20261101000700_private_rls_helpers.sql
+    20261101000800_class_overview.sql
 ```
 
 ## Feuille de route
 
-1. Authentification, profils, création des établissements et gestion des rôles.
-2. Classes, élèves, enseignants et responsables légaux.
-3. Appels par cours et cahier numérique collectif, clôture par la vie scolaire.
-4. Justifications, événements disciplinaires, rapports et audit.
-5. Notifications multi-canaux avec maîtrise des coûts.
-6. Licences annuelles et paiements Mobile Money.
+1. Authentification, profils et création des établissements.
+2. Classes et élèves connectés à Supabase (premier module métier).
+3. Affectations des enseignants, chefs de classe et responsables légaux.
+4. Appels enregistrés par cours et cahier numérique collectif, clôture par la vie scolaire.
+5. Justifications, événements disciplinaires, rapports et audit.
+6. Notifications multi-canaux, licences annuelles et paiements Mobile Money.
 7. Application Android et synchronisation hors ligne.
 
 ## État du projet
