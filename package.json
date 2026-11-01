@@ -1,0 +1,26 @@
+{
+  "name": "school-presence",
+  "version": "1.0.0",
+  "description": "SaaS starter for School Presence with OpenAI-compatible free model APIs",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "school",
+    "presence",
+    "saas",
+    "burkina-faso",
+    "education",
+    "openai-compatible"
+  ],
+  "author": "afiss859-eng",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "openai": "^4.40.0"
+  }
+}

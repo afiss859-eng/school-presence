@@ -1,0 +1,185 @@
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const crypto = require('crypto');
+const OpenAI = require('openai');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const appInfo = {
+  name: process.env.APP_NAME || 'SCHOOL PRESENCE',
+  env: process.env.APP_ENV || 'development',
+};
+
+app.use(cors());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function getProviderConfig() {
+  const provider = process.env.AI_PROVIDER || 'devx_minimodel';
+
+  if (provider === 'aimodel') {
+    return {
+      baseURL: process.env.AIMODEL_BASE_URL || 'https://aimodelapi.onrender.com/v1',
+      apiKey: process.env.AIMODEL_API_KEY || 'devx-m6iuohrcl78c2r7g3wxgoeo3b6zn6spd',
+      model: process.env.AIMODEL_MODEL || 'dev-x',
+    };
+  }
+
+  return {
+    baseURL: process.env.DEVX_MINIMODEL_BASE_URL || 'https://devx-minimodel-apis.vercel.app/v1',
+    apiKey: process.env.DEVX_MINIMODEL_API_KEY || 'ScriptDevX',
+    model: process.env.DEVX_MINIMODEL_MODEL || 'community/ZapGaming/llama3.1-8b-xturbo',
+  };
+}
+
+async function generateWithAI(prompt, fallbackText) {
+  const { baseURL, apiKey, model } = getProviderConfig();
+
+  if (!apiKey || !baseURL) {
+    return fallbackText;
+  }
+
+  try {
+    const client = new OpenAI({
+      apiKey,
+      baseURL,
+      dangerouslyAllowBrowser: true,
+    });
+
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Tu es un assistant expert en gestion scolaire et SaaS éducatif. Réponds en français, de manière claire et professionnelle.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.7,
+    });
+
+    const content = completion?.choices?.[0]?.message?.content;
+    return content || fallbackText;
+  } catch (error) {
+    console.error('AI generation failed:', error.message);
+    return fallbackText;
+  }
+}
+
+function makeLicenseToken(key) {
+  return crypto.createHash('sha256').update(`${key}:${process.env.LICENSE_SECRET_KEY || 'school-presence-demo-key'}`).digest('hex');
+}
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    app: appInfo.name,
+    env: appInfo.env,
+    timestamp: new Date().toISOString(),
+    providers: {
+      active: process.env.AI_PROVIDER || 'devx_minimodel',
+      baseURL: getProviderConfig().baseURL,
+      model: getProviderConfig().model,
+    },
+  });
+});
+
+app.post('/api/license/validate', (req, res) => {
+  const { key, schoolName = 'Établissement non renseigné' } = req.body || {};
+
+  if (!key || typeof key !== 'string') {
+    return res.status(400).json({
+      valid: false,
+      message: 'La clé de licence est obligatoire.',
+    });
+  }
+
+  const normalizedKey = key.trim();
+  const validPrefix = 'SCHOOL-';
+
+  if (!normalizedKey.startsWith(validPrefix)) {
+    return res.status(401).json({
+      valid: false,
+      status: 'invalid',
+      message: 'La clé n’est pas valide. Format attendu : SCHOOL-XXXXXX',
+    });
+  }
+
+  const token = makeLicenseToken(normalizedKey);
+  const now = Date.now();
+  const isExpired = false;
+
+  return res.json({
+    valid: true,
+    status: isExpired ? 'expired' : 'active',
+    message: `Licence validée pour ${schoolName}.`,
+    key: normalizedKey,
+    token,
+    expiresAt: new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString(),
+  });
+});
+
+app.post('/api/attendance/summary', async (req, res) => {
+  const payload = req.body || {};
+  const { schoolName = 'Établissement', className = 'Classe', date = new Date().toISOString().slice(0, 10), present = 0, absent = 0, late = 0, disciplineCases = 0 } = payload;
+
+  const prompt = `Tu es un assistant de gestion scolaire du Burkina Faso. Rédige un rapport de présence très clair en français pour l'établissement ${schoolName}, classe ${className}, date ${date}. Nombre de présents : ${present}, absents : ${absent}, retards : ${late}, cas de discipline : ${disciplineCases}. Donne : 1) un résumé, 2) un tableau simple, 3) une conclusion et 4) une recommandation rapide.`;
+
+  const fallback = {
+    status: 'ok',
+    schoolName,
+    className,
+    date,
+    present,
+    absent,
+    late,
+    disciplineCases,
+    summary: `Le ${date}, la classe ${className} de ${schoolName} a enregistré ${present} présences, ${absent} absences et ${late} retards. Le niveau de suivi est globalement acceptable, avec ${disciplineCases} cas à surveiller.`,
+    recommendation: 'Poursuivre les rappels aux enseignants et la communication avec les parents pour réduire les absences répétées.',
+  };
+
+  const aiText = await generateWithAI(prompt, JSON.stringify(fallback, null, 2));
+
+  try {
+    const parsed = JSON.parse(aiText);
+    return res.json({ ...fallback, ai: parsed });
+  } catch (error) {
+    return res.json({
+      ...fallback,
+      aiText,
+      source: 'generated',
+    });
+  }
+});
+
+app.post('/api/parent-notification', async (req, res) => {
+  const payload = req.body || {};
+  const { studentName = 'Élève', className = 'Classe', reason = 'Absence non justifiée', messageType = 'absence' } = payload;
+
+  const prompt = `Tu es un assistant de communication scolaire. Rédige un message parentale en français, concis et professionnel, pour un parent d'élève nommé ${studentName} de la classe ${className}. Type de message : ${messageType}. Raison : ${reason}. Les parents doivent comprendre clairement la situation, sans être agressifs. Le message doit être adapté au contexte scolaire au Burkina Faso.`;
+
+  const fallback = `Bonjour, nous vous informons que ${studentName} de la classe ${className} a une situation de ${reason}. Merci de prendre connaissance et de contacter l'établissement pour une meilleure coordination.`;
+
+  const aiText = await generateWithAI(prompt, fallback);
+
+  return res.json({
+    status: 'ok',
+    studentName,
+    className,
+    messageType,
+    message: aiText,
+  });
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`${appInfo.name} running on http://localhost:${PORT}`);
+  console.log(`AI provider: ${process.env.AI_PROVIDER || 'devx_minimodel'}`);
+});
