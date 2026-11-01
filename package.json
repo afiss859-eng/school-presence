@@ -1,26 +1,25 @@
 {
   "name": "school-presence",
-  "version": "1.0.0",
-  "description": "SaaS starter for School Presence with OpenAI-compatible free model APIs",
-  "main": "server.js",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Plateforme de gestion intelligente de la vie scolaire au Burkina Faso",
+  "type": "module",
   "scripts": {
-    "dev": "node server.js",
-    "start": "node server.js"
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0"
   },
-  "keywords": [
-    "school",
-    "presence",
-    "saas",
-    "burkina-faso",
-    "education",
-    "openai-compatible"
-  ],
-  "author": "afiss859-eng",
-  "license": "MIT",
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "openai": "^4.40.0"
+    "@supabase/supabase-js": "^2.57.4",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
   }
 }
