@@ -1,217 +1,68 @@
-<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SCHOOL PRESENCE</title>
-    <style>
-      :root {
-        --bg: #0f172a;
-        --panel: #111827;
-        --panel-soft: #1f2937;
-        --line: #334155;
-        --text: #e5e7eb;
-        --muted: #94a3b8;
-        --primary: #22c55e;
-        --accent: #38bdf8;
-        --danger: #f87171;
-      }
+# SCHOOL PRESENCE
 
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #0f172a, #1d4ed8);
-        color: var(--text);
-      }
-      .container {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 40px 20px;
-      }
-      .card {
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        border-radius: 18px;
-        padding: 24px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
-      }
-      h1 {
-        margin-top: 0;
-        margin-bottom: 10px;
-      }
-      .subtitle {
-        color: var(--muted);
-        margin-bottom: 24px;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 20px;
-      }
-      .field {
-        display: flex;
-        flex-direction: column;
-        margin-bottom: 14px;
-      }
-      label {
-        margin-bottom: 6px;
-        color: var(--muted);
-        font-size: 14px;
-      }
-      input, button, textarea {
-        width: 100%;
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        font-size: 15px;
-      }
-      input, textarea {
-        background: rgba(17, 24, 39, 1);
-        color: var(--text);
-      }
-      button {
-        background: var(--primary);
-        color: #052e16;
-        border: none;
-        font-weight: bold;
-        cursor: pointer;
-        margin-top: 10px;
-      }
-      .danger {
-        background: var(--danger);
-        color: #fff;
-      }
-      textarea {
-        min-height: 140px;
-        resize: vertical;
-      }
-      .result {
-        margin-top: 24px;
-        background: rgba(15, 118, 110, 0.18);
-        border: 1px solid rgba(94, 234, 212, 0.4);
-        border-radius: 10px;
-        padding: 16px;
-        white-space: pre-wrap;
-      }
-      .status {
-        margin-top: 12px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="card">
-        <h1>SCHOOL PRESENCE</h1>
-        <p class="subtitle">Plateforme de gestion intelligente de la vie scolaire</p>
+Plateforme web et mobile de gestion de la vie scolaire, conçue pour les réalités des établissements du Burkina Faso : primaire, collège, lycée et université.
 
-        <div class="grid">
-          <div>
-            <div class="field">
-              <label>Nom de l'établissement</label>
-              <input id="schoolName" value="Collège Moderne de Ouagadougou" />
-            </div>
+## Objectif du produit
 
-            <div class="field">
-              <label>Nom de la classe</label>
-              <input id="className" value="3A" />
-            </div>
+Simplifier les appels, centraliser les informations de vie scolaire et améliorer la communication entre enseignants, vie scolaire, administration et parents. L'établissement doit pouvoir choisir son organisation : appel direct par enseignant, cahier numérique collectif ou transition papier + numérique.
 
-            <div class="field">
-              <label>Date</label>
-              <input id="date" value="2026-11-01" />
-            </div>
-          </div>
+## Première version du dépôt
 
-          <div>
-            <div class="field">
-              <label>Présents</label>
-              <input id="present" type="number" value="28" />
-            </div>
+- Application web responsive React + TypeScript + Vite.
+- Première interface de tableau de bord et de saisie d'appel (données de démonstration locales).
+- Modèle PostgreSQL Supabase initial avec isolation par établissement et politiques RLS.
+- Fondations pour distinguer absences/retards, expulsions de cours et exclusions disciplinaires.
 
-            <div class="field">
-              <label>Absents</label>
-              <input id="absent" type="number" value="4" />
-            </div>
+> Important : cette version est un socle de développement. Les données visibles dans l'interface sont fictives et locales. L'authentification, la persistance Supabase, les notifications et l'application Android ne sont pas encore activées.
 
-            <div class="field">
-              <label>Retards</label>
-              <input id="late" type="number" value="3" />
-            </div>
+## Démarrage local
 
-            <div class="field">
-              <label>Cas de discipline</label>
-              <input id="disciplineCases" type="number" value="2" />
-            </div>
-          </div>
-        </div>
+1. Installer Node.js LTS.
+2. Installer les dépendances : \`npm install\`.
+3. Copier \`.env.example\` vers \`.env\` et renseigner les clés publiques Supabase quand le projet sera configuré.
+4. Lancer : \`npm run dev\`.
+5. Créer le build : \`npm run build\`.
 
-        <button id="generateSummaryBtn">Générer le rapport de présence</button>
-        <button id="validateLicenseBtn" class="danger">Valider la licence</button>
+## Variables d'environnement
 
-        <div class="status" id="status">Prêt</div>
+- \`VITE_SUPABASE_URL\` : URL du projet Supabase.
+- \`VITE_SUPABASE_ANON_KEY\` : clé publique/anon du projet.
 
-        <div class="result" id="result">
-{ "status": "ready", "message": "Le rapport va être généré..." }
-        </div>
-      </div>
-    </div>
+Ne jamais placer une clé \`service_role\`, un mot de passe ou un secret serveur dans une variable \`VITE_*\` ou dans le navigateur.
 
-    <script>
-      const resultBox = document.getElementById('result');
-      const statusBox = document.getElementById('status');
+## Structure
 
-      document.getElementById('generateSummaryBtn').addEventListener('click', async () => {
-        statusBox.textContent = 'Génération du rapport...';
-        const payload = {
-          schoolName: document.getElementById('schoolName').value,
-          className: document.getElementById('className').value,
-          date: document.getElementById('date').value,
-          present: Number(document.getElementById('present').value),
-          absent: Number(document.getElementById('absent').value),
-          late: Number(document.getElementById('late').value),
-          disciplineCases: Number(document.getElementById('disciplineCases').value),
-        };
+\`\`\`
+src/
+  App.tsx
+  main.tsx
+  styles.css
+  lib/
+    domain.ts
+    supabase.ts
+supabase/
+  migrations/
+    0001_initial_schema.sql
+\`\`\`
 
-        try {
-          const res = await fetch('/api/attendance/summary', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
+## Principes de sécurité
 
-          const data = await res.json();
-          resultBox.textContent = JSON.stringify(data, null, 2);
-          statusBox.textContent = 'Rapport généré';
-        } catch (error) {
-          resultBox.textContent = 'Erreur: ' + error.message;
-          statusBox.textContent = 'Erreur';
-        }
-      });
+- Chaque donnée métier appartient à un établissement via \`school_id\`.
+- Les autorisations sont contrôlées côté base avec Row Level Security (RLS), et pas uniquement dans l'interface.
+- Un parent peut demander la justification d'une absence ou d'un retard, mais ne peut pas modifier une expulsion de cours ou une sanction officielle.
+- Une expulsion de cours est un événement distinct d'une exclusion de l'établissement.
+- Le journal d'audit et les notifications seront ajoutés avant toute mise en production.
 
-      document.getElementById('validateLicenseBtn').addEventListener('click', async () => {
-        statusBox.textContent = 'Validation de la licence...';
+## Feuille de route
 
-        try {
-          const res = await fetch('/api/license/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              key: 'SCHOOL-2025-DEMO',
-              schoolName: document.getElementById('schoolName').value,
-            }),
-          });
+1. Authentification, profils, établissements et invitations.
+2. Gestion des classes, élèves, enseignants et responsables légaux.
+3. Appels par cours et cahier numérique collectif, avec clôture par la vie scolaire.
+4. Justifications, événements disciplinaires, rapports et audit.
+5. Notifications multi-canaux avec maîtrise des coûts.
+6. Licences annuelles et paiements Mobile Money.
+7. Application Android et synchronisation hors ligne.
 
-          const data = await res.json();
-          resultBox.textContent = JSON.stringify(data, null, 2);
-          statusBox.textContent = data.valid ? 'Licence valide' : 'Licence invalide';
-        } catch (error) {
-          resultBox.textContent = 'Erreur: ' + error.message;
-          statusBox.textContent = 'Erreur';
-        }
-      });
-    </script>
-  </body>
-</html>
+## Licence
+
+Projet privé en cours de développement.
