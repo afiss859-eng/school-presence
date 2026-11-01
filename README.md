@@ -89,14 +89,15 @@ supabase/
     20261101000700_private_rls_helpers.sql
     20261101000800_class_overview.sql
     20261101000900_restore_school_creator_insert.sql
+    20261101001000_submit_attendance.sql
 ```
 
 ## Feuille de route
 
 1. Authentification, profils et création des établissements.
-2. Classes et élèves connectés à Supabase (premier module métier).
+2. Classes, élèves et registre d’appel connectés à Supabase.
 3. Affectations des enseignants, chefs de classe et responsables légaux.
-4. Appels enregistrés par cours et cahier numérique collectif, clôture par la vie scolaire.
+4. Cahier numérique collectif et clôture par la vie scolaire.
 5. Justifications, événements disciplinaires, rapports et audit.
 6. Notifications multi-canaux, licences annuelles et paiements Mobile Money.
 7. Application Android et synchronisation hors ligne.
