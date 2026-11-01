@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Activity,
   Bell,
@@ -321,13 +322,13 @@ function App() {
   );
 }
 
-function MetricCard({ title, value, note, icon, tone }: { title: string; value: string; note: string; icon: React.ReactNode; tone: string }) {
+function MetricCard({ title, value, note, icon, tone }: { title: string; value: string; note: string; icon: ReactNode; tone: string }) {
   return <div className="metric-card"><div className={"metric-icon " + tone}>{icon}</div><span>{title}</span><strong>{value}</strong><small>{note}</small></div>;
 }
 function LegendRow({ color, label, value }: { color: string; label: string; value: string }) {
   return <div className="legend-row"><span className={"legend-dot " + color} /><span>{label}</span><strong>{value}</strong></div>;
 }
-function TaskRow({ icon, title, detail, color }: { icon: React.ReactNode; title: string; detail: string; color: string }) {
+function TaskRow({ icon, title, detail, color }: { icon: ReactNode; title: string; detail: string; color: string }) {
   return <div className="task-row"><div className={"task-icon " + color}>{icon}</div><div><strong>{title}</strong><span>{detail}</span></div><ChevronDown className="task-arrow" size={17} /></div>;
 }
 function ClassRow({ name, count, present, absent, state }: { name: string; count: string; present: string; absent: string; state: string }) {
