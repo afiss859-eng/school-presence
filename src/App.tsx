@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
@@ -19,7 +19,10 @@ import {
   X
 } from "lucide-react";
 import type { AttendanceStatus, StudentAttendance } from "./lib/domain";
-import { isSupabaseConfigured } from "./lib/supabase";
+import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import type { User } from "@supabase/supabase-js";
+import AuthScreen from "./components/AuthScreen";
+import SchoolOnboarding from "./components/SchoolOnboarding";
 
 type Page = "overview" | "attendance" | "life" | "classes" | "reports";
 
@@ -57,7 +60,29 @@ function formatDate(value: string): string {
   }).format(new Date(value + "T12:00:00"));
 }
 
-function App() {
+interface SchoolInfo {
+  id: string;
+  name: string;
+  school_type: string;
+  city: string | null;
+}
+
+interface SchoolMembership {
+  id: string;
+  school_id: string;
+  role: string;
+  school: SchoolInfo | null;
+}
+
+interface DashboardProps {
+  school: SchoolInfo;
+  role: string;
+  userEmail: string;
+  userName: string;
+  onSignOut: () => void;
+}
+
+function Dashboard({ school, role, userEmail, userName, onSignOut }: DashboardProps) {
   const [page, setPage] = useState<Page>("overview");
   const [students, setStudents] = useState<StudentAttendance[]>(initialStudents);
   const [selectedClass, setSelectedClass] = useState("3e A");
@@ -113,8 +138,8 @@ function App() {
         <div className="school-switcher">
           <div className="school-avatar">CM</div>
           <div className="school-copy">
-            <strong>Collège de démonstration</strong>
-            <span>Établissement pilote</span>
+            <strong>{school.name}</strong>
+            <span>{school.city || "Établissement"} · {role}</span>
           </div>
           <ChevronDown size={16} />
         </div>
@@ -146,8 +171,8 @@ function App() {
           </div>
           <div className="profile-row">
             <div className="profile-avatar">AD</div>
-            <div className="profile-copy"><strong>Administrateur</strong><span>Direction</span></div>
-            <button className="icon-button" aria-label="Options du profil"><ChevronDown size={17} /></button>
+            <div className="profile-copy"><strong>{userName}</strong><span>{role} · {userEmail}</span></div>
+            <button className="icon-button" onClick={onSignOut} aria-label="Se déconnecter"><ChevronDown size={17} /></button>
           </div>
         </div>
       </aside>
@@ -161,7 +186,7 @@ function App() {
             <div><span className="breadcrumb">Établissement</span><span className="breadcrumb-separator">/</span><strong>{activePage}</strong></div>
           </div>
           <div className="topbar-actions">
-            <div className="system-status"><span /> Prototype de démonstration</div>
+            <div className="system-status"><span /> Compte connecté · démo locale</div>
             <button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><i /></button>
             <div className="topbar-avatar">AD</div>
           </div>
@@ -341,4 +366,171 @@ function ReportMetric({ label, value, hint }: { label: string; value: string; hi
   return <div className="report-metric"><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>;
 }
 
-export default App;
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [memberships, setMemberships] = useState<SchoolMembership[]>([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+  const [membershipError, setMembershipError] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthReady(true);
+    });
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        setMembershipError(error.message);
+      }
+      setUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user || !supabase) {
+      setMemberships([]);
+      setMembershipsLoading(false);
+      setMembershipError("");
+      return;
+    }
+
+    let cancelled = false;
+    setMembershipsLoading(true);
+    setMembershipError("");
+
+    async function loadMemberships() {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from("school_members")
+        .select("id, school_id, role, schools(id, name, school_type, city)")
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+
+      if (cancelled) return;
+      if (error) {
+        setMembershipError(error.message);
+        setMemberships([]);
+      } else {
+        const rows = (data ?? []) as unknown as Array<{
+          id: string;
+          school_id: string;
+          role: string;
+          schools: SchoolInfo | SchoolInfo[] | null;
+        }>;
+        setMemberships(rows.map((row) => ({
+          id: row.id,
+          school_id: row.school_id,
+          role: row.role,
+          school: Array.isArray(row.schools) ? (row.schools[0] ?? null) : row.schools
+        })));
+      }
+      setMembershipsLoading(false);
+    }
+
+    void loadMemberships();
+    return () => { cancelled = true; };
+  }, [user, refreshToken]);
+
+  if (!isSupabaseConfigured || !supabase) {
+    return <SetupRequired />;
+  }
+
+  if (!authReady) {
+    return <LoadingScreen label="Vérification de votre session…" />;
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  if (membershipsLoading) {
+    return <LoadingScreen label="Chargement de votre établissement…" />;
+  }
+
+  if (membershipError) {
+    return (
+      <ConnectionError
+        message={membershipError}
+        onRetry={() => setRefreshToken((value) => value + 1)}
+        onSignOut={() => { void supabase.auth.signOut(); }}
+      />
+    );
+  }
+
+  const membership = memberships.find((item) => item.school !== null);
+  if (!membership?.school) {
+    return (
+      <SchoolOnboarding
+        user={user}
+        onCreated={() => setRefreshToken((value) => value + 1)}
+        onSignOut={() => { void supabase.auth.signOut(); }}
+      />
+    );
+  }
+
+  const roleLabels: Record<string, string> = {
+    super_admin: "Super administrateur",
+    school_admin: "Direction",
+    life_supervisor: "Vie scolaire",
+    teacher: "Enseignant",
+    class_delegate: "Chef de classe",
+    student: "Élève",
+    parent: "Parent"
+  };
+
+  return (
+    <Dashboard
+      school={membership.school}
+      role={roleLabels[membership.role] ?? membership.role}
+      userEmail={user.email ?? ""}
+      userName={String(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "Utilisateur")}
+      onSignOut={() => { void supabase.auth.signOut(); }}
+    />
+  );
+}
+
+function LoadingScreen({ label }: { label: string }) {
+  return <main className="auth-state-page"><div className="auth-state-card"><div className="auth-brand-mark"><GraduationCap size={25} /></div><strong>SCHOOL <span>PRESENCE</span></strong><p>{label}</p></div></main>;
+}
+
+function SetupRequired() {
+  return (
+    <main className="auth-state-page">
+      <div className="auth-state-card setup-card">
+        <div className="auth-brand-mark"><GraduationCap size={25} /></div>
+        <strong>SCHOOL <span>PRESENCE</span></strong>
+        <h1>Connexion à la base de données à configurer</h1>
+        <p>Ajoutez l’URL du projet Supabase et sa clé <strong>publishable</strong> dans les variables d’environnement de déploiement.</p>
+        <code>VITE_SUPABASE_URL</code>
+        <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>
+        <p className="setup-warning">N’utilisez jamais une clé service_role ou une clé secrète dans le navigateur. Appliquez d’abord les migrations SQL du dossier <code>supabase/migrations</code>.</p>
+      </div>
+    </main>
+  );
+}
+
+function ConnectionError({ message, onRetry, onSignOut }: { message: string; onRetry: () => void; onSignOut: () => void }) {
+  return (
+    <main className="auth-state-page">
+      <div className="auth-state-card setup-card">
+        <div className="auth-brand-mark"><GraduationCap size={25} /></div>
+        <strong>SCHOOL <span>PRESENCE</span></strong>
+        <h1>Impossible de charger votre espace</h1>
+        <p>{message}</p>
+        <p>Vérifiez que toutes les migrations SQL ont été appliquées et que l’API Data de Supabase est accessible.</p>
+        <button className="auth-submit" onClick={onRetry}>Réessayer</button>
+        <button className="onboarding-logout" onClick={onSignOut}>Se déconnecter</button>
+      </div>
+    </main>
+  );
+}
