@@ -49,7 +49,7 @@ supabase db push
 supabase functions deploy manage-school-invites
 ```
 
-Les migrations créent les tables, les déclencheurs de profil et d'administration initiale, les invitations du personnel, les droits Data API et les politiques RLS. Le schéma interne app_private n'est pas destiné à être exposé par la Data API.
+Les migrations créent les tables, les déclencheurs de profil et d'administration initiale, les invitations du personnel, les droits Data API et les politiques RLS. La fonction supabase/functions/manage-school-invites vérifie le compte administrateur avant d'envoyer ou d'annuler une invitation. Le schéma interne app_private n'est pas destiné à être exposé par la Data API.
 
 Dans Supabase, configurer Authentication > URL Configuration :
 - Site URL : l'URL réelle de l'application.
@@ -94,6 +94,7 @@ supabase/
     20261101001000_submit_attendance.sql
     20261101001100_attendance_resubmission_safety.sql
     20261105000100_staff_invitations.sql
+    20261105000200_staff_invitation_server_grants.sql
 ```
 
 ## Feuille de route
