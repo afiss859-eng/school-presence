@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
+import { createClient, type User } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,17 +56,6 @@ function readBody(value: unknown): InviteBody | null {
     return { action: "invite", school_id: body.school_id, email: body.email.trim().toLowerCase(), role, class_id: classId };
   }
   return null;
-}
-
-async function findExistingUser(admin: ReturnType<typeof createClient>, email: string) {
-  for (let page = 1; page <= 20; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-    if (error) throw error;
-    const found = data.users.find((user) => user.email?.toLowerCase() === email);
-    if (found) return found;
-    if (data.users.length < 1000) return null;
-  }
-  throw new Error("La recherche du compte dépasse la limite de sécurité.");
 }
 
 Deno.serve(async (request: Request) => {
@@ -174,7 +163,24 @@ Deno.serve(async (request: Request) => {
       throw invitationError;
     }
 
-    const existingUser = await findExistingUser(adminClient, body.email);
+    let existingUser: User | null = null;
+    let userDirectoryComplete = false;
+    for (let page = 1; page <= 20; page += 1) {
+      const { data: usersPage, error: usersError } = await adminClient.auth.admin.listUsers({
+        page,
+        perPage: 1000,
+      });
+      if (usersError) throw usersError;
+      existingUser = usersPage.users.find((candidate) => candidate.email?.toLowerCase() === body.email) ?? null;
+      if (existingUser || usersPage.users.length < 1000) {
+        userDirectoryComplete = true;
+        break;
+      }
+    }
+    if (!userDirectoryComplete) {
+      throw new Error("La recherche du compte dépasse la limite de sécurité.");
+    }
+
     if (existingUser && !existingUser.email_confirmed_at) {
       await adminClient.from("school_invitations").delete().eq("id", invitation.id);
       return json({
