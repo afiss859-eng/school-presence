@@ -94,6 +94,12 @@ interface SchoolStaffMember {
   profile: { full_name: string | null; email: string | null } | null;
 }
 
+interface StaffClassAssignment {
+  user_id: string;
+  class_id: string;
+  role: string;
+}
+
 interface StaffInvitation {
   id: string;
   email: string;
@@ -153,6 +159,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
   const [studentSaveError, setStudentSaveError] = useState("");
   const [teamMembers, setTeamMembers] = useState<SchoolStaffMember[]>([]);
   const [teamInvitations, setTeamInvitations] = useState<StaffInvitation[]>([]);
+  const [teamAssignments, setTeamAssignments] = useState<StaffClassAssignment[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [teamRefresh, setTeamRefresh] = useState(0);
@@ -235,6 +242,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     if (!dbClient || !isSchoolAdmin) {
       setTeamMembers([]);
       setTeamInvitations([]);
+      setTeamAssignments([]);
       setTeamLoading(false);
       setTeamError("");
       return;
@@ -246,7 +254,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     setTeamError("");
 
     async function loadTeam() {
-      const [membersResult, invitationsResult] = await Promise.all([
+      const [membersResult, invitationsResult, assignmentsResult] = await Promise.all([
         client
           .from("school_members")
           .select("id, user_id, role, is_active, profiles!school_members_profile_fk(full_name, email)")
@@ -257,14 +265,19 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
           .select("id, email, role, class_id, status, created_at, expires_at")
           .eq("school_id", school.id)
           .order("created_at", { ascending: false })
-          .limit(100)
+          .limit(100),
+        client
+          .from("class_assignments")
+          .select("user_id, class_id, role")
+          .eq("school_id", school.id)
       ]);
 
       if (cancelled) return;
-      if (membersResult.error || invitationsResult.error) {
-        setTeamError(membersResult.error?.message ?? invitationsResult.error?.message ?? "Impossible de charger l’équipe.");
+      if (membersResult.error || invitationsResult.error || assignmentsResult.error) {
+        setTeamError(membersResult.error?.message ?? invitationsResult.error?.message ?? assignmentsResult.error?.message ?? "Impossible de charger l’équipe.");
         setTeamMembers([]);
         setTeamInvitations([]);
+        setTeamAssignments([]);
       } else {
         const members = (membersResult.data ?? []) as unknown as Array<{
           id: string;
@@ -281,6 +294,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
           profile: Array.isArray(member.profiles) ? (member.profiles[0] ?? null) : member.profiles
         })));
         setTeamInvitations((invitationsResult.data ?? []) as StaffInvitation[]);
+        setTeamAssignments((assignmentsResult.data ?? []) as StaffClassAssignment[]);
       }
       setTeamLoading(false);
     }
@@ -824,7 +838,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
                     {teamMembers.map((member) => (
                       <div className="team-member-row" key={member.id}>
                         <span className="team-member-avatar">{(member.profile?.full_name || member.profile?.email || "U").slice(0,1).toUpperCase()}</span>
-                        <div className="team-member-copy"><strong>{member.profile?.full_name || "Nom non renseigné"}</strong><span>{member.profile?.email || member.user_id}</span></div>
+                        <div className="team-member-copy"><strong>{member.profile?.full_name || "Nom non renseigné"}</strong><span>{member.profile?.email || member.user_id}</span><small>{teamAssignments.filter((assignment) => assignment.user_id === member.user_id).map((assignment) => schoolClasses.find((schoolClass) => schoolClass.id === assignment.class_id)?.name).filter(Boolean).join(" · ") || (member.role === "teacher" || member.role === "class_delegate" ? "Aucune classe affectée" : "Accès établissement")}</small></div>
                         <span className={"team-role-pill " + member.role}>{member.role === "school_admin" ? "Direction" : member.role === "super_admin" ? "Super administrateur" : member.role === "life_supervisor" ? "Vie scolaire" : member.role === "class_delegate" ? "Chef de classe" : member.role === "teacher" ? "Enseignant" : member.role}</span>
                         <span className={"team-member-status " + (member.is_active ? "active" : "inactive")}>{member.is_active ? "Actif" : "Désactivé"}</span>
                       </div>
