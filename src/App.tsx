@@ -332,7 +332,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     setLifeLoading(true); setLifeError("");
     async function loadLifeRegister() {
       try {
-        const [sr,jr,ar]=await Promise.all([
+        const [sr,jr,ar,dr]=await Promise.all([
           client.from("attendance_sessions").select("id,class_id,session_date,period_label,status,submitted_at,closed_at").eq("school_id",school.id).order("session_date",{ascending:false}).order("created_at",{ascending:false}).limit(100),
           client.from("attendance_justifications").select("id,attendance_record_id,reason,status,created_at").eq("school_id",school.id).eq("status","pending").order("created_at",{ascending:true}).limit(100),
           client.from("school_audit_events").select("id,event_type,entity_type,created_at").eq("school_id",school.id).order("created_at",{ascending:false}).limit(20),
