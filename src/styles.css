@@ -402,3 +402,8 @@ h1 { margin-bottom: 6px; color: #172e50; font: 800 24px "Manrope",sans-serif; le
 @media(max-width:900px){.life-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.life-toolbar{align-items:flex-start;flex-direction:column}.life-session-row,.life-justification-row{align-items:flex-start;flex-direction:column}
 .life-session-action,.life-justification-actions{width:100%;align-items:flex-start;justify-content:flex-start;flex-direction:row}.life-audit-row{align-items:flex-start;flex-direction:column;gap:4px}.life-audit-row small{text-align:left}}
+
+.life-discipline-list{display:grid}.life-discipline-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eff2f6}
+.life-discipline-row:last-child{border-bottom:0}.life-discipline-badge{flex:none;padding:5px 8px;border-radius:7px;font-size:9px;font-weight:800}
+.life-discipline-badge.course{color:#426fa8;background:#edf4ff}.life-discipline-badge.school{color:#b56d25;background:#fff3e5}
+@media(max-width:560px){.life-discipline-row{align-items:flex-start;flex-direction:column}}
