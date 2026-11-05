@@ -15,6 +15,10 @@ import {
   Menu,
   Plus,
   Search,
+  UserPlus,
+  UserRoundCheck,
+  ShieldCheck,
+  MailCheck,
   ShieldAlert,
   Users,
   X
@@ -25,7 +29,7 @@ import type { User } from "@supabase/supabase-js";
 import AuthScreen from "./components/AuthScreen";
 import SchoolOnboarding from "./components/SchoolOnboarding";
 
-type Page = "overview" | "attendance" | "life" | "classes" | "students" | "reports";
+type Page = "overview" | "attendance" | "life" | "classes" | "students" | "team" | "reports";
 
 const navigation = [
   { id: "overview" as const, label: "Vue d’ensemble", icon: LayoutDashboard },
@@ -33,6 +37,7 @@ const navigation = [
   { id: "life" as const, label: "Vie scolaire", icon: ShieldAlert },
   { id: "classes" as const, label: "Classes", icon: BookOpen },
   { id: "students" as const, label: "Élèves", icon: Users },
+  { id: "team" as const, label: "Équipe", icon: UserRoundCheck },
   { id: "reports" as const, label: "Rapports", icon: FileBarChart }
 ];
 
@@ -81,6 +86,26 @@ interface SchoolStudent {
   current_class_id: string | null;
 }
 
+interface SchoolStaffMember {
+  id: string;
+  user_id: string;
+  role: string;
+  is_active: boolean;
+  profile: { full_name: string | null; email: string | null } | null;
+}
+
+interface StaffInvitation {
+  id: string;
+  email: string;
+  role: string;
+  class_id: string | null;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  created_at: string;
+  expires_at: string;
+}
+
+type StaffInviteRole = "teacher" | "life_supervisor" | "class_delegate";
+
 interface DashboardProps {
   school: SchoolInfo;
   role: string;
@@ -126,6 +151,18 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
   const [newStudentCode, setNewStudentCode] = useState("");
   const [studentSaving, setStudentSaving] = useState(false);
   const [studentSaveError, setStudentSaveError] = useState("");
+  const [teamMembers, setTeamMembers] = useState<SchoolStaffMember[]>([]);
+  const [teamInvitations, setTeamInvitations] = useState<StaffInvitation[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState("");
+  const [teamRefresh, setTeamRefresh] = useState(0);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<StaffInviteRole>("teacher");
+  const [inviteClassId, setInviteClassId] = useState("");
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteNotice, setInviteNotice] = useState("");
+  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dbClient) return;
@@ -193,6 +230,64 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     void loadStudents();
     return () => { cancelled = true; };
   }, [dbClient, school.id, selectedStudentClassId, studentsRefresh]);
+
+  useEffect(() => {
+    if (!dbClient || !isSchoolAdmin) {
+      setTeamMembers([]);
+      setTeamInvitations([]);
+      setTeamLoading(false);
+      setTeamError("");
+      return;
+    }
+
+    const client: NonNullable<typeof dbClient> = dbClient;
+    let cancelled = false;
+    setTeamLoading(true);
+    setTeamError("");
+
+    async function loadTeam() {
+      const [membersResult, invitationsResult] = await Promise.all([
+        client
+          .from("school_members")
+          .select("id, user_id, role, is_active, profiles!school_members_profile_fk(full_name, email)")
+          .eq("school_id", school.id)
+          .order("created_at", { ascending: true }),
+        client
+          .from("school_invitations")
+          .select("id, email, role, class_id, status, created_at, expires_at")
+          .eq("school_id", school.id)
+          .order("created_at", { ascending: false })
+          .limit(100)
+      ]);
+
+      if (cancelled) return;
+      if (membersResult.error || invitationsResult.error) {
+        setTeamError(membersResult.error?.message ?? invitationsResult.error?.message ?? "Impossible de charger l’équipe.");
+        setTeamMembers([]);
+        setTeamInvitations([]);
+      } else {
+        const members = (membersResult.data ?? []) as unknown as Array<{
+          id: string;
+          user_id: string;
+          role: string;
+          is_active: boolean;
+          profiles: { full_name: string | null; email: string | null } | { full_name: string | null; email: string | null }[] | null;
+        }>;
+        setTeamMembers(members.map((member) => ({
+          id: member.id,
+          user_id: member.user_id,
+          role: member.role,
+          is_active: member.is_active,
+          profile: Array.isArray(member.profiles) ? (member.profiles[0] ?? null) : member.profiles
+        })));
+        setTeamInvitations((invitationsResult.data ?? []) as StaffInvitation[]);
+      }
+      setTeamLoading(false);
+    }
+
+    void loadTeam();
+    return () => { cancelled = true; };
+  }, [dbClient, school.id, isSchoolAdmin, teamRefresh]);
 
   useEffect(() => {
     if (!dbClient || !selectedAttendanceClassId) {
@@ -297,6 +392,63 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     }
   }
 
+  async function handleInviteStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dbClient || !isSchoolAdmin) return;
+    setInviteError("");
+    setInviteNotice("");
+    setInviteSaving(true);
+
+    try {
+      const { data, error } = await dbClient.functions.invoke("manage-school-invites", {
+        body: {
+          action: "invite",
+          school_id: school.id,
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+          class_id: inviteRole === "life_supervisor" ? null : inviteClassId
+        }
+      });
+      if (error) {
+        const responseMessage = (data as { error?: string } | null)?.error;
+        throw new Error(responseMessage || error.message);
+      }
+      const result = data as { success?: boolean; status?: string; message?: string; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || "L’invitation n’a pas pu être créée.");
+      setInviteNotice(result.message || (result.status === "assigned" ? "Compte ajouté à l’établissement." : "Invitation envoyée."));
+      setInviteEmail("");
+      setTeamRefresh((value) => value + 1);
+    } catch (caught) {
+      setInviteError(caught instanceof Error ? caught.message : "Impossible d’envoyer l’invitation.");
+    } finally {
+      setInviteSaving(false);
+    }
+  }
+
+  async function handleRevokeInvitation(invitationId: string) {
+    if (!dbClient || !isSchoolAdmin) return;
+    setInviteError("");
+    setInviteNotice("");
+    setRevokingInvitationId(invitationId);
+    try {
+      const { data, error } = await dbClient.functions.invoke("manage-school-invites", {
+        body: { action: "revoke", school_id: school.id, invitation_id: invitationId }
+      });
+      if (error) {
+        const responseMessage = (data as { error?: string } | null)?.error;
+        throw new Error(responseMessage || error.message);
+      }
+      const result = data as { success?: boolean; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || "Impossible d’annuler cette invitation.");
+      setInviteNotice("Invitation annulée.");
+      setTeamRefresh((value) => value + 1);
+    } catch (caught) {
+      setInviteError(caught instanceof Error ? caught.message : "Impossible d’annuler cette invitation.");
+    } finally {
+      setRevokingInvitationId(null);
+    }
+  }
+
   const attendanceTotals = useMemo(() => {
     return attendanceStudents.reduce(
       (result, student) => {
@@ -378,7 +530,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
 
         <p className="nav-caption">ESPACE ÉTABLISSEMENT</p>
         <nav className="main-nav" aria-label="Navigation principale">
-          {navigation.map((item) => {
+          {navigation.filter((item) => item.id !== "team" || isSchoolAdmin).map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -435,6 +587,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
                 {page === "life" && "Retrouvez les événements et les éléments à traiter par la vie scolaire."}
                 {page === "classes" && "Consultez les classes enregistrées dans votre établissement."}
                 {page === "students" && "Consultez les élèves et gérez leurs inscriptions par classe."}
+                {page === "team" && "Invitez les enseignants et organisez les responsabilités de l’établissement."}
                 {page === "reports" && "Suivez les indicateurs et préparez les rapports de votre établissement."}
               </p>
             </div>
@@ -635,6 +788,69 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
                   {visibleSchoolStudents.length === 0 && <div className="empty-state">{studentSearch ? "Aucun élève ne correspond à la recherche." : "Aucun élève inscrit dans cette classe."}</div>}
                 </div>
               )}
+            </section>
+          )}
+
+          {page === "team" && isSchoolAdmin && (
+            <section className="team-page">
+              <form className="panel team-invite-panel" onSubmit={handleInviteStaff}>
+                <div className="panel-heading">
+                  <div><h2>Ajouter un membre à l’équipe</h2><p>Une invitation est envoyée par e-mail. Un compte déjà existant est ajouté directement.</p></div>
+                  <span className="entity-form-icon"><UserPlus size={19} /></span>
+                </div>
+                <div className="team-invite-fields">
+                  <label className="entity-field"><span>Adresse e-mail professionnelle</span><input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="enseignant@exemple.com" required maxLength={254} /></label>
+                  <label className="entity-field"><span>Fonction</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as StaffInviteRole)}><option value="teacher">Enseignant</option><option value="class_delegate">Chef de classe</option><option value="life_supervisor">Vie scolaire / surveillant</option></select></label>
+                  {inviteRole !== "life_supervisor" && (
+                    <label className="entity-field"><span>Classe d’affectation</span><select value={inviteClassId} onChange={(event) => setInviteClassId(event.target.value)} required><option value="">Sélectionner une classe</option>{schoolClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}</select></label>
+                  )}
+                  <button className="primary-button" type="submit" disabled={inviteSaving || !inviteEmail.trim() || (inviteRole !== "life_supervisor" && !inviteClassId)}>{inviteSaving ? "Envoi…" : <><UserPlus size={16} /> Envoyer l’invitation</>}</button>
+                </div>
+                {inviteError && <p className="form-error">{inviteError}</p>}
+                {inviteNotice && <p className="success-note">{inviteNotice}</p>}
+                {schoolClasses.length === 0 && inviteRole !== "life_supervisor" && <p className="team-hint">Créez d’abord une classe pour affecter un enseignant ou un chef de classe.</p>}
+              </form>
+
+              {teamError && <div className="panel inline-error"><strong>Impossible de charger l’équipe.</strong><p>{teamError}</p><button className="text-button" onClick={() => setTeamRefresh((value) => value + 1)}>Réessayer</button></div>}
+
+              <div className="panel team-list-panel">
+                <div className="panel-heading"><div><h2>Membres de l’établissement</h2><p>Comptes actifs et fonctions déjà attribuées.</p></div><span className="counter-badge">{teamMembers.length}</span></div>
+                {teamLoading ? (
+                  <div className="empty-data-state">Chargement de l’équipe…</div>
+                ) : teamMembers.length === 0 ? (
+                  <div className="empty-data-state"><Users size={24} /><strong>Aucun membre supplémentaire</strong><p>Le compte de direction est prêt. Invitez les premiers enseignants et surveillants.</p></div>
+                ) : (
+                  <div className="team-member-list">
+                    {teamMembers.map((member) => (
+                      <div className="team-member-row" key={member.id}>
+                        <span className="team-member-avatar">{(member.profile?.full_name || member.profile?.email || "U").slice(0,1).toUpperCase()}</span>
+                        <div className="team-member-copy"><strong>{member.profile?.full_name || "Nom non renseigné"}</strong><span>{member.profile?.email || member.user_id}</span></div>
+                        <span className={"team-role-pill " + member.role}>{member.role === "school_admin" ? "Direction" : member.role === "super_admin" ? "Super administrateur" : member.role === "life_supervisor" ? "Vie scolaire" : member.role === "class_delegate" ? "Chef de classe" : member.role === "teacher" ? "Enseignant" : member.role}</span>
+                        <span className={"team-member-status " + (member.is_active ? "active" : "inactive")}>{member.is_active ? "Actif" : "Désactivé"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="panel team-list-panel">
+                <div className="panel-heading"><div><h2>Invitations</h2><p>Les invitations en attente expirent après sept jours.</p></div><span className="counter-badge">{teamInvitations.filter((item) => item.status === "pending").length} en attente</span></div>
+                {teamInvitations.length === 0 ? (
+                  <div className="empty-data-state"><MailCheck size={23} /><strong>Aucune invitation</strong><p>Les invitations envoyées apparaîtront ici.</p></div>
+                ) : (
+                  <div className="team-invitation-list">
+                    {teamInvitations.map((invitation) => (
+                      <div className="team-invitation-row" key={invitation.id}>
+                        <span className="team-invite-icon"><MailCheck size={17} /></span>
+                        <div className="team-member-copy"><strong>{invitation.email}</strong><span>{invitation.role === "life_supervisor" ? "Vie scolaire" : invitation.role === "class_delegate" ? "Chef de classe" : "Enseignant"}{invitation.class_id ? " · " + (schoolClasses.find((item) => item.id === invitation.class_id)?.name || "Classe") : ""}</span></div>
+                        <span className={"team-invite-status " + invitation.status}>{invitation.status === "pending" ? "En attente" : invitation.status === "accepted" ? "Acceptée" : invitation.status === "revoked" ? "Annulée" : "Expirée"}</span>
+                        {invitation.status === "pending" && <button className="text-button danger-text" type="button" onClick={() => handleRevokeInvitation(invitation.id)} disabled={revokingInvitationId === invitation.id}>{revokingInvitationId === invitation.id ? "Annulation…" : "Annuler"}</button>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="team-permission-note"><ShieldCheck size={18} /><div><strong>Les droits sont appliqués par la base de données.</strong><p>Les enseignants et chefs de classe n’obtiennent que l’accès à leur classe. La vie scolaire consulte les données nécessaires au suivi de l’établissement. Les invitations ne peuvent pas attribuer le rôle de direction.</p></div></div>
             </section>
           )}
 
