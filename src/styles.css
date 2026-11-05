@@ -380,3 +380,4 @@ h1 { margin-bottom: 6px; color: #172e50; font: 800 24px "Manrope",sans-serif; le
   .team-role-pill,.team-invite-status,.team-member-status { margin-left: 42px; }
   .team-invitation-row .text-button { margin-left: auto; }
 }
+.team-member-copy small { display: block; margin-top: 4px; overflow: hidden; color: #4d83b7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
