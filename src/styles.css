@@ -381,3 +381,24 @@ h1 { margin-bottom: 6px; color: #172e50; font: 800 24px "Manrope",sans-serif; le
   .team-invitation-row .text-button { margin-left: auto; }
 }
 .team-member-copy small { display: block; margin-top: 4px; overflow: hidden; color: #4d83b7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Live school-life register */
+.life-workspace{display:grid;gap:16px}.life-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.life-toolbar h2{margin:0 0 5px;color:#213856;font:800 16px "Manrope",sans-serif}.life-toolbar p{margin:0;color:#8996a8;font-size:11px}
+.secondary-button{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #dfe7f1;border-radius:9px;color:#34506f;background:#fff;font-size:10px;font-weight:700}
+.secondary-button:disabled,.small-primary-button:disabled,.small-danger-button:disabled{opacity:.55;cursor:wait}
+.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-list-panel{min-width:0}
+.life-session-row,.life-justification-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #eff2f6}
+.life-session-row:last-child,.life-justification-row:last-child{border-bottom:0}.life-session-copy{min-width:0;display:grid;gap:5px}
+.life-session-copy strong{color:#344a68;font-size:11px}.life-session-copy span{color:#7f8da1;font-size:10px}.life-session-copy small{color:#929fb0;font-size:9px;overflow-wrap:anywhere}
+.life-session-action{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex:none}
+.life-status{padding:4px 7px;border-radius:6px;background:#f2f4f7;color:#71809a;font-size:9px;font-weight:700}
+.life-status.submitted{color:#b57724;background:#fff4e4}.life-status.closed{color:#12835c;background:#eaf7f1}
+.small-primary-button,.small-danger-button{padding:7px 9px;border:0;border-radius:7px;font-size:9px;font-weight:700}
+.small-primary-button{color:#fff;background:#2673d9}.small-danger-button{color:#b94c4c;background:#fff0f0}
+.life-justification-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex:none}
+.life-audit-list{display:grid}.life-audit-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #eff2f6;color:#52647d;font-size:10px}
+.life-audit-row:last-child{border:0}.life-audit-row small{color:#93a0b0;font-size:9px;text-align:right}
+@media(max-width:900px){.life-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.life-toolbar{align-items:flex-start;flex-direction:column}.life-session-row,.life-justification-row{align-items:flex-start;flex-direction:column}
+.life-session-action,.life-justification-actions{width:100%;align-items:flex-start;justify-content:flex-start;flex-direction:row}.life-audit-row{align-items:flex-start;flex-direction:column;gap:4px}.life-audit-row small{text-align:left}}
