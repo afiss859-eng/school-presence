@@ -10,6 +10,7 @@ Simplifier les appels, centraliser les informations de vie scolaire et améliore
 
 - Interface web responsive : tableau de bord, appel interactif, classes, vie scolaire et rapports de démonstration.
 - Gestion connectée des classes et des élèves via Supabase (création réservée à la direction, lecture filtrée par RLS).
+- Gestion de l’équipe : invitations e-mail, ajout des comptes existants, affectation à une classe et annulation des invitations en attente.
 - Authentification e-mail/mot de passe avec Supabase Auth.
 - Création du premier établissement par le compte connecté.
 - Attribution automatique du rôle school_admin au créateur de l'établissement.
@@ -45,9 +46,10 @@ Appliquer les migrations du dossier supabase/migrations dans l'ordre chronologiq
 supabase login
 supabase link --project-ref VOTRE_PROJECT_REF
 supabase db push
+supabase functions deploy manage-school-invites
 ```
 
-Les migrations créent les tables, les déclencheurs de profil et d'administration initiale, les droits Data API et les politiques RLS. Le schéma interne app_private n'est pas destiné à être exposé par la Data API.
+Les migrations créent les tables, les déclencheurs de profil et d'administration initiale, les invitations du personnel, les droits Data API et les politiques RLS. Le schéma interne app_private n'est pas destiné à être exposé par la Data API.
 
 Dans Supabase, configurer Authentication > URL Configuration :
 - Site URL : l'URL réelle de l'application.
@@ -91,13 +93,14 @@ supabase/
     20261101000900_restore_school_creator_insert.sql
     20261101001000_submit_attendance.sql
     20261101001100_attendance_resubmission_safety.sql
+    20261105000100_staff_invitations.sql
 ```
 
 ## Feuille de route
 
 1. Authentification, profils et création des établissements.
 2. Classes, élèves et registre d’appel connectés à Supabase.
-3. Affectations des enseignants, chefs de classe et responsables légaux.
+3. Invitations et affectations des enseignants, chefs de classe et vie scolaire.
 4. Cahier numérique collectif et clôture par la vie scolaire.
 5. Justifications, événements disciplinaires, rapports et audit.
 6. Notifications multi-canaux, licences annuelles et paiements Mobile Money.
