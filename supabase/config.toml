@@ -1,0 +1,5 @@
+project_id = "school-presence"
+
+[functions.manage-school-invites]
+# The function validates the user JWT itself and checks school_admin membership.
+verify_jwt = false
