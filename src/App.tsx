@@ -108,6 +108,10 @@ interface LifeJustification {
  id:string; attendance_record_id:string; reason:string; status:"pending"|"approved"|"rejected"; created_at:string;
  attendance_status:AttendanceStatus|null; student_name:string; session_date:string; class_id:string;
 }
+interface LifeDisciplinaryEvent {
+ id:string; student_id:string; event_type:"course_expulsion"|"temporary_exclusion"|"permanent_exclusion";
+ reason:string; occurred_at:string; ends_at:string|null; student_name:string;
+}
 interface LifeAuditEvent { id:string; event_type:string; entity_type:string; created_at:string; }
 
 interface StaffInvitation {
@@ -183,6 +187,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
   const [lifeSessions,setLifeSessions]=useState<LifeAttendanceSession[]>([]);
   const [lifeJustifications,setLifeJustifications]=useState<LifeJustification[]>([]);
   const [lifeAuditEvents,setLifeAuditEvents]=useState<LifeAuditEvent[]>([]);
+  const [lifeDisciplinaryEvents,setLifeDisciplinaryEvents]=useState<LifeDisciplinaryEvent[]>([]);
   const [lifeLoading,setLifeLoading]=useState(false);
   const [lifeError,setLifeError]=useState("");
   const [lifeRefresh,setLifeRefresh]=useState(0);
@@ -330,11 +335,24 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
         const [sr,jr,ar]=await Promise.all([
           client.from("attendance_sessions").select("id,class_id,session_date,period_label,status,submitted_at,closed_at").eq("school_id",school.id).order("session_date",{ascending:false}).order("created_at",{ascending:false}).limit(100),
           client.from("attendance_justifications").select("id,attendance_record_id,reason,status,created_at").eq("school_id",school.id).eq("status","pending").order("created_at",{ascending:true}).limit(100),
-          client.from("school_audit_events").select("id,event_type,entity_type,created_at").eq("school_id",school.id).order("created_at",{ascending:false}).limit(20)
+          client.from("school_audit_events").select("id,event_type,entity_type,created_at").eq("school_id",school.id).order("created_at",{ascending:false}).limit(20),
+          client.from("disciplinary_events").select("id,student_id,event_type,reason,occurred_at,ends_at").eq("school_id",school.id).order("occurred_at",{ascending:false}).limit(100)
         ]);
-        if(sr.error) throw sr.error; if(jr.error) throw jr.error; if(ar.error) throw ar.error;
+        if(sr.error) throw sr.error; if(jr.error) throw jr.error; if(ar.error) throw ar.error; if(dr.error) throw dr.error;
         const sessions=(sr.data??[]) as unknown as LifeAttendanceSession[];
         const pending=(jr.data??[]) as unknown as Array<{id:string;attendance_record_id:string;reason:string;status:"pending"|"approved"|"rejected";created_at:string}>;
+        const disciplineRows=(dr.data??[]) as unknown as Array<{id:string;student_id:string;event_type:"course_expulsion"|"temporary_exclusion"|"permanent_exclusion";reason:string;occurred_at:string;ends_at:string|null}>;
+        const disciplineStudentIds=[...new Set(disciplineRows.map(x=>x.student_id))];
+        const {data:disciplineStudentData,error:disciplineStudentError}=disciplineStudentIds.length
+          ? await client.from("students").select("id,first_name,last_name").in("id",disciplineStudentIds)
+          : {data:[],error:null};
+        if(disciplineStudentError) throw disciplineStudentError;
+        const disciplineStudents=(disciplineStudentData??[]) as unknown as Array<{id:string;first_name:string;last_name:string}>;
+        const disciplineStudentMap=new Map(disciplineStudents.map(x=>[x.id,x]));
+        const enrichedDiscipline:LifeDisciplinaryEvent[]=disciplineRows.map(x=>{
+          const student=disciplineStudentMap.get(x.student_id);
+          return {...x,student_name:student?student.first_name+" "+student.last_name:"Élève"};
+        });
         let enriched:LifeJustification[]=[];
         if(pending.length) {
           const ids=pending.map(x=>x.attendance_record_id);
@@ -352,9 +370,9 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
           });
         }
         if(cancelled) return;
-        setLifeSessions(sessions); setLifeJustifications(enriched); setLifeAuditEvents((ar.data??[]) as unknown as LifeAuditEvent[]);
+        setLifeSessions(sessions); setLifeJustifications(enriched); setLifeAuditEvents((ar.data??[]) as unknown as LifeAuditEvent[]); setLifeDisciplinaryEvents(enrichedDiscipline);
       } catch(e) {
-        if(!cancelled) {setLifeError(e instanceof Error?e.message:"Impossible de charger le registre.");setLifeSessions([]);setLifeJustifications([]);setLifeAuditEvents([]);}
+        if(!cancelled) {setLifeError(e instanceof Error?e.message:"Impossible de charger le registre.");setLifeSessions([]);setLifeJustifications([]);setLifeAuditEvents([]);setLifeDisciplinaryEvents([]);}
       } finally {if(!cancelled) setLifeLoading(false);}
     }
     void loadLifeRegister();
@@ -582,6 +600,10 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     catch(e){setLifeError(e instanceof Error?e.message:"Impossible de traiter cette justification.");}
     finally{setLifeActionId(null);}
   }
+  function lifeDisciplinaryLabel(type:string) {
+    const labels:Record<string,string>={course_expulsion:"Expulsion de cours",temporary_exclusion:"Exclusion temporaire de l’établissement",permanent_exclusion:"Exclusion définitive de l’établissement"};
+    return labels[type]??"Événement disciplinaire";
+  }
   function lifeEventLabel(type:string) {
     const labels:Record<string,string>={attendance_submitted:"Appel transmis",attendance_closed:"Registre clôturé",justification_submitted:"Justification déposée",justification_approved:"Justification approuvée",justification_rejected:"Justification rejetée",disciplinary_event_created:"Événement disciplinaire enregistré"};
     return labels[type]??"Activité enregistrée";
@@ -659,7 +681,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
             <div><span className="breadcrumb">Établissement</span><span className="breadcrumb-separator">/</span><strong>{activePage}</strong></div>
           </div>
           <div className="topbar-actions">
-            <div className="system-status"><span /> Compte connecté · démo locale</div>
+            <div className="system-status"><span /> {isSupabaseConfigured ? "Compte connecté · Supabase" : "Compte connecté · aperçu local"}</div>
             <button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /><i /></button>
             <div className="topbar-avatar">AD</div>
           </div>
@@ -817,6 +839,13 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
                       </article>)}
                     </section>
                   </div>
+                  <section className="panel life-discipline-panel">
+                    <div className="panel-heading"><div><h2>Décisions disciplinaires</h2><p>Consultation seule · les décisions officielles ne sont pas modifiables ici.</p></div><span className="counter-badge">{lifeDisciplinaryEvents.length} événements</span></div>
+                    {lifeDisciplinaryEvents.length===0?<div className="empty-state">Aucun événement disciplinaire enregistré.</div>:<div className="life-discipline-list">{lifeDisciplinaryEvents.map(event=><article className="life-discipline-row" key={event.id}>
+                      <div className="life-session-copy"><strong>{event.student_name}</strong><span>{lifeDisciplinaryLabel(event.event_type)} · {new Date(event.occurred_at).toLocaleString("fr-FR")}</span><small>{event.reason}{event.ends_at?" · Fin prévue : "+new Date(event.ends_at).toLocaleString("fr-FR"):""}</small></div>
+                      <span className={"life-discipline-badge "+(event.event_type==="course_expulsion"?"course":"school")}>{event.event_type==="course_expulsion"?"Cours":"Établissement"}</span>
+                    </article>)}</div>}
+                  </section>
                   <section className="panel life-audit-panel"><div className="panel-heading"><div><h2>Historique des opérations</h2><p>Journal des transmissions, clôtures et décisions.</p></div><span className="counter-badge">{lifeAuditEvents.length} événements</span></div>
                     {lifeAuditEvents.length===0?<div className="empty-state">L’historique apparaîtra avec les premières opérations.</div>:<div className="life-audit-list">{lifeAuditEvents.map(e=><div className="life-audit-row" key={e.id}><span>{lifeEventLabel(e.event_type)}</span><small>{new Date(e.created_at).toLocaleString("fr-FR")}</small></div>)}</div>}
                   </section>
