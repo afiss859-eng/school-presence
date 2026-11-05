@@ -334,3 +334,49 @@ h1 { margin-bottom: 6px; color: #172e50; font: 800 24px "Manrope",sans-serif; le
 }
 /* Allow attendance controls to wrap on small screens */
 .call-controls { flex-wrap: wrap; }
+
+
+/* Staff directory and invitation management */
+.team-page { display: grid; gap: 16px; }
+.team-invite-panel { border-top: 3px solid #347fc9; }
+.team-invite-fields { display: grid; grid-template-columns: minmax(190px,1.5fr) minmax(150px,.9fr) minmax(150px,1fr) auto; align-items: end; gap: 11px; }
+.team-invite-fields .primary-button { min-height: 39px; white-space: nowrap; }
+.team-invite-fields select { width: 100%; min-width: 0; height: 39px; padding: 0 10px; border: 1px solid #e1e8f0; border-radius: 8px; outline: 0; color: #304864; background: white; font-size: 10px; }
+.team-invite-fields select:focus { border-color: #6ba1dc; box-shadow: 0 0 0 3px #2c79c913; }
+.team-hint { margin: 10px 0 0; color: #8b6b33; font-size: 9px; }
+.team-list-panel { overflow: hidden; }
+.team-member-list,.team-invitation-list { display: grid; }
+.team-member-row,.team-invitation-row { min-height: 62px; display: flex; align-items: center; gap: 12px; padding: 10px 15px; border-top: 1px solid #edf1f6; }
+.team-member-avatar,.team-invite-icon { width: 35px; height: 35px; display: grid; place-items: center; flex: none; border-radius: 11px; color: #2c70b6; background: #eaf3ff; font-size: 12px; font-weight: 800; }
+.team-invite-icon { color: #8a6a35; background: #fff5e4; }
+.team-member-copy { flex: 1; min-width: 0; }
+.team-member-copy strong { display: block; overflow: hidden; color: #344c69; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.team-member-copy span { display: block; margin-top: 4px; overflow: hidden; color: #8e9bad; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.team-role-pill,.team-invite-status,.team-member-status { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border-radius: 20px; color: #59728e; background: #f1f5fa; font-size: 8px; font-weight: 700; white-space: nowrap; }
+.team-role-pill.teacher { color: #286cae; background: #eaf3ff; }
+.team-role-pill.life_supervisor { color: #7b61a9; background: #f3effb; }
+.team-role-pill.class_delegate { color: #9b6e28; background: #fff5e3; }
+.team-role-pill.school_admin,.team-role-pill.super_admin { color: #187253; background: #e9f8f0; }
+.team-member-status { min-width: 53px; justify-content: center; }
+.team-member-status.active { color: #187653; background: #eaf8f1; }
+.team-member-status.inactive { color: #a25850; background: #fff0ee; }
+.team-invite-status.pending { color: #95681f; background: #fff5e3; }
+.team-invite-status.accepted { color: #187653; background: #eaf8f1; }
+.team-invite-status.revoked,.team-invite-status.expired { color: #8b96a5; background: #f0f2f5; }
+.danger-text { color: #b35a50 !important; }
+.team-permission-note { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 1px solid #e1ebf6; border-radius: 10px; color: #4a6b8d; background: #f5f9fe; }
+.team-permission-note > svg { flex: none; color: #367ab8; }
+.team-permission-note strong { color: #375a7b; font-size: 10px; }
+.team-permission-note p { margin: 5px 0 0; color: #7f93a8; font-size: 9px; line-height: 1.65; }
+@media (max-width: 900px) {
+  .team-invite-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .team-invite-fields .primary-button { justify-content: center; }
+}
+@media (max-width: 580px) {
+  .team-invite-fields { grid-template-columns: 1fr; }
+  .team-invite-fields .primary-button { width: 100%; }
+  .team-member-row,.team-invitation-row { flex-wrap: wrap; gap: 7px; padding: 11px 9px; }
+  .team-member-copy { flex-basis: calc(100% - 50px); }
+  .team-role-pill,.team-invite-status,.team-member-status { margin-left: 42px; }
+  .team-invitation-row .text-button { margin-left: auto; }
+}
