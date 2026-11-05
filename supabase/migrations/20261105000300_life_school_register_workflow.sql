@@ -137,3 +137,45 @@ grant execute on function public.review_attendance_justification(uuid,public.jus
 comment on table public.school_audit_events is 'Journal immuable des appels transmis/clôturés, justifications traitées et événements disciplinaires.';
 comment on function public.close_attendance_session(uuid) is 'Clôture un registre transmis ; opération réservée à la vie scolaire et à la direction.';
 comment on function public.review_attendance_justification(uuid,public.justification_status,text) is 'Traite une justification en conservant ses données originales.';
+
+-- A closed session is immutable and can only be closed by the official server operation.
+create or replace function app_private.guard_attendance_session_closure()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, app_private
+as $$
+begin
+  if old.status = 'closed' and (
+    new.status is distinct from old.status
+    or new.closed_at is distinct from old.closed_at
+    or new.closed_by is distinct from old.closed_by
+  ) then
+    raise exception 'Un registre clôturé est définitif ; toute correction doit suivre une procédure administrative tracée.';
+  end if;
+
+  if old.status <> 'closed' and new.status = 'closed' then
+    if old.status <> 'submitted'
+      or auth.uid() is null
+      or new.closed_by is distinct from auth.uid()
+      or new.closed_at is null
+      or not app_private.has_school_role(
+        old.school_id,
+        array['super_admin', 'school_admin', 'life_supervisor']::public.school_role[]
+      ) then
+      raise exception 'Seule la vie scolaire ou la direction peut clôturer un registre transmis.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function app_private.guard_attendance_session_closure() from public, anon, authenticated;
+drop trigger if exists attendance_sessions_guard_closure on public.attendance_sessions;
+create trigger attendance_sessions_guard_closure
+  before update of status, closed_at, closed_by on public.attendance_sessions
+  for each row execute function app_private.guard_attendance_session_closure();
+
+-- Review is available only through the checked SECURITY DEFINER RPC above.
+revoke update on public.attendance_justifications from authenticated;
+drop policy if exists "life_school_reviews_justifications" on public.attendance_justifications;
