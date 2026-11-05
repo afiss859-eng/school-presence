@@ -997,9 +997,6 @@ function TaskRow({ icon, title, detail, color }: { icon: ReactNode; title: strin
 function ClassRow({ name, count, present, absent, state }: { name: string; count: string; present: string; absent: string; state: string }) {
   return <div className="table-row"><strong>{name}</strong><span>{count}</span><span className="green-text">{present}</span><span className="orange-text">{absent}</span><span><i className={"state-indicator " + (state === "Terminé" ? "state-done" : "state-pending")} />{state}</span></div>;
 }
-function EventRow({ type, student, detail, state, tone }: { type: string; student: string; detail: string; state: string; tone: string }) {
-  return <div className="event-row"><div className={"event-icon " + tone}><ShieldAlert size={18} /></div><div className="event-copy"><strong>{type}</strong><span>{student}</span><small>{detail}</small></div><span className={"event-state " + tone}>{state}</span></div>;
-}
 function ReportMetric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return <div className="report-metric"><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>;
 }
