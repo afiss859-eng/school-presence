@@ -31,7 +31,7 @@ Simplifier les appels, centraliser les informations de vie scolaire et améliore
 
 ## Configuration Supabase
 
-Créer un projet Supabase dédié à SCHOOL PRESENCE, puis récupérer l'URL du projet et sa clé publishable dans la fenêtre Connect / API Keys.
+Créer un projet Supabase dédié à SCHOOL PRESENCE, puis récupérer l'URL du projet et sa clé publishable dans la fenêtre Connect / API Keys. Les commandes ci-dessous utilisent Supabase CLI v3 : `db push` doit cibler explicitement le projet hébergé avec `--remote`, et les modifications hébergées nécessitent `--yes`. Examiner d'abord le résultat de `--dry-run`.
 
 Variables locales et Vercel :
 
@@ -45,8 +45,9 @@ Appliquer les migrations du dossier supabase/migrations dans l'ordre chronologiq
 ```bash
 supabase login
 supabase link --project-ref VOTRE_PROJECT_REF
-supabase db push
-supabase functions deploy manage-school-invites
+supabase db push --dry-run --remote
+supabase db push --yes --remote
+supabase functions deploy manage-school-invites --yes
 ```
 
 Les migrations créent les tables, les déclencheurs de profil et d'administration initiale, les invitations du personnel, les droits Data API, les politiques RLS, la clôture des registres, la revue des justifications et le journal d’audit. La fonction supabase/functions/manage-school-invites vérifie le compte administrateur avant d'envoyer ou d'annuler une invitation. Le schéma interne app_private n'est pas destiné à être exposé par la Data API.
