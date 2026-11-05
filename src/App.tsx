@@ -100,6 +100,16 @@ interface StaffClassAssignment {
   role: string;
 }
 
+interface LifeAttendanceSession {
+ id:string; class_id:string; session_date:string; period_label:string|null;
+ status:"draft"|"submitted"|"closed"; submitted_at:string|null; closed_at:string|null;
+}
+interface LifeJustification {
+ id:string; attendance_record_id:string; reason:string; status:"pending"|"approved"|"rejected"; created_at:string;
+ attendance_status:AttendanceStatus|null; student_name:string; session_date:string; class_id:string;
+}
+interface LifeAuditEvent { id:string; event_type:string; entity_type:string; created_at:string; }
+
 interface StaffInvitation {
   id: string;
   email: string;
@@ -170,6 +180,14 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
   const [inviteError, setInviteError] = useState("");
   const [inviteNotice, setInviteNotice] = useState("");
   const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null);
+  const [lifeSessions,setLifeSessions]=useState<LifeAttendanceSession[]>([]);
+  const [lifeJustifications,setLifeJustifications]=useState<LifeJustification[]>([]);
+  const [lifeAuditEvents,setLifeAuditEvents]=useState<LifeAuditEvent[]>([]);
+  const [lifeLoading,setLifeLoading]=useState(false);
+  const [lifeError,setLifeError]=useState("");
+  const [lifeRefresh,setLifeRefresh]=useState(0);
+  const [lifeActionId,setLifeActionId]=useState<string|null>(null);
+  const isLifeSchoolRole=isSchoolAdmin||roleCode==="life_supervisor";
 
   useEffect(() => {
     if (!dbClient) return;
@@ -302,6 +320,46 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     void loadTeam();
     return () => { cancelled = true; };
   }, [dbClient, school.id, isSchoolAdmin, teamRefresh]);
+
+  useEffect(() => {
+    if (!dbClient || page!=="life" || !isLifeSchoolRole) { setLifeLoading(false); return; }
+    const client:NonNullable<typeof dbClient>=dbClient; let cancelled=false;
+    setLifeLoading(true); setLifeError("");
+    async function loadLifeRegister() {
+      try {
+        const [sr,jr,ar]=await Promise.all([
+          client.from("attendance_sessions").select("id,class_id,session_date,period_label,status,submitted_at,closed_at").eq("school_id",school.id).order("session_date",{ascending:false}).order("created_at",{ascending:false}).limit(100),
+          client.from("attendance_justifications").select("id,attendance_record_id,reason,status,created_at").eq("school_id",school.id).eq("status","pending").order("created_at",{ascending:true}).limit(100),
+          client.from("school_audit_events").select("id,event_type,entity_type,created_at").eq("school_id",school.id).order("created_at",{ascending:false}).limit(20)
+        ]);
+        if(sr.error) throw sr.error; if(jr.error) throw jr.error; if(ar.error) throw ar.error;
+        const sessions=(sr.data??[]) as unknown as LifeAttendanceSession[];
+        const pending=(jr.data??[]) as unknown as Array<{id:string;attendance_record_id:string;reason:string;status:"pending"|"approved"|"rejected";created_at:string}>;
+        let enriched:LifeJustification[]=[];
+        if(pending.length) {
+          const ids=pending.map(x=>x.attendance_record_id);
+          const {data:rd,error:re}=await client.from("attendance_records").select("id,student_id,status,session_id").in("id",ids);
+          if(re) throw re;
+          const records=(rd??[]) as unknown as Array<{id:string;student_id:string;status:AttendanceStatus;session_id:string}>;
+          const studentIds=[...new Set(records.map(x=>x.student_id))];
+          const {data:sd,error:se}=studentIds.length?await client.from("students").select("id,first_name,last_name").in("id",studentIds):{data:[],error:null};
+          if(se) throw se;
+          const students=(sd??[]) as unknown as Array<{id:string;first_name:string;last_name:string}>;
+          const rm=new Map(records.map(x=>[x.id,x])), sm=new Map(students.map(x=>[x.id,x])), sem=new Map(sessions.map(x=>[x.id,x]));
+          enriched=pending.map(x=>{
+            const r=rm.get(x.attendance_record_id), st=r?sm.get(r.student_id):null, ss=r?sem.get(r.session_id):null;
+            return {...x,attendance_status:r?.status??null,student_name:st?st.first_name+" "+st.last_name:"Élève",session_date:ss?.session_date??x.created_at.slice(0,10),class_id:ss?.class_id??""};
+          });
+        }
+        if(cancelled) return;
+        setLifeSessions(sessions); setLifeJustifications(enriched); setLifeAuditEvents((ar.data??[]) as unknown as LifeAuditEvent[]);
+      } catch(e) {
+        if(!cancelled) {setLifeError(e instanceof Error?e.message:"Impossible de charger le registre.");setLifeSessions([]);setLifeJustifications([]);setLifeAuditEvents([]);}
+      } finally {if(!cancelled) setLifeLoading(false);}
+    }
+    void loadLifeRegister();
+    return ()=>{cancelled=true;};
+  },[dbClient,school.id,page,isLifeSchoolRole,lifeRefresh]);
 
   useEffect(() => {
     if (!dbClient || !selectedAttendanceClassId) {
@@ -512,6 +570,23 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
     }
   }
 
+  async function closeLifeSession(sessionId:string) {
+    if(!dbClient||!isLifeSchoolRole) return; setLifeActionId(sessionId); setLifeError("");
+    try {const {error}=await dbClient.rpc("close_attendance_session",{p_session_id:sessionId});if(error)throw error;setLifeRefresh(v=>v+1);}
+    catch(e){setLifeError(e instanceof Error?e.message:"Impossible de clôturer cette séance.");}
+    finally{setLifeActionId(null);}
+  }
+  async function reviewLifeJustification(id:string,status:"approved"|"rejected") {
+    if(!dbClient||!isLifeSchoolRole) return;setLifeActionId(id);setLifeError("");
+    try {const {error}=await dbClient.rpc("review_attendance_justification",{p_justification_id:id,p_status:status,p_review_note:null});if(error)throw error;setLifeRefresh(v=>v+1);}
+    catch(e){setLifeError(e instanceof Error?e.message:"Impossible de traiter cette justification.");}
+    finally{setLifeActionId(null);}
+  }
+  function lifeEventLabel(type:string) {
+    const labels:Record<string,string>={attendance_submitted:"Appel transmis",attendance_closed:"Registre clôturé",justification_submitted:"Justification déposée",justification_approved:"Justification approuvée",justification_rejected:"Justification rejetée",disciplinary_event_created:"Événement disciplinaire enregistré"};
+    return labels[type]??"Activité enregistrée";
+  }
+
   function changePage(nextPage: Page) {
     setPage(nextPage);
     setMobileMenuOpen(false);
@@ -610,7 +685,7 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
 
           <div className="demo-notice">
             <span className="notice-icon"><Activity size={17} /></span>
-            <p><strong>Version de démarrage.</strong> Les classes, les élèves et le registre d’appel sont connectés à Supabase. Les chiffres du tableau de bord, le registre de vie scolaire et les rapports restent démonstratifs.</p>
+            <p><strong>Version de démarrage.</strong> Les classes, les élèves, les appels et le registre de vie scolaire sont connectés à Supabase. Les indicateurs du tableau de bord et les rapports restent démonstratifs.</p>
             <button onClick={() => changePage("attendance")}>Tester un appel <span>→</span></button>
           </div>
 
@@ -719,12 +794,35 @@ function Dashboard({ school, role, roleCode, userEmail, userName, onSignOut }: D
           )}
 
           {page === "life" && (
-            <section className="panel life-panel">
-              <div className="panel-heading"><div><h2>Registre de vie scolaire</h2><p>Exemples d’événements à examiner, sans action disciplinaire automatique.</p></div><span className="counter-badge">3 éléments</span></div>
-              <EventRow type="Absence" student="Issa Traoré" detail="3e A · Aujourd’hui à 08:00" state="Justification attendue" tone="orange" />
-              <EventRow type="Retard" student="Adama Kaboré" detail="3e A · Aujourd’hui à 08:18" state="À examiner" tone="purple" />
-              <EventRow type="Expulsion de cours" student="Élève de démonstration" detail="2nde C · Cours de mathématiques · Motif à consulter" state="Événement enregistré" tone="blue" />
-              <div className="discipline-separation"><ShieldAlert size={19} /><div><strong>Absence, retard et discipline restent séparés.</strong><p>Un parent peut justifier une absence ou un retard. Il ne peut ni effacer une expulsion de cours ni modifier une sanction officielle.</p></div></div>
+            <section className="life-workspace">
+              {!isLifeSchoolRole ? (
+                <div className="panel empty-data-state"><ShieldAlert size={25}/><strong>Accès réservé à la vie scolaire</strong><p>La consultation et la clôture des registres sont réservées à la vie scolaire et à la direction.</p></div>
+              ) : <>
+                <div className="life-toolbar"><div><h2>Registre officiel de vie scolaire</h2><p>Données enregistrées dans l’établissement · décisions historisées.</p></div><button className="secondary-button" onClick={()=>setLifeRefresh(v=>v+1)} disabled={lifeLoading}><Activity size={16}/> Actualiser</button></div>
+                {lifeError&&<div className="inline-error"><strong>Une opération n’a pas abouti.</strong><p>{lifeError}</p></div>}
+                {lifeLoading?<div className="panel empty-data-state">Chargement du registre réel…</div>:<>
+                  <div className="life-grid">
+                    <section className="panel life-list-panel">
+                      <div className="panel-heading"><div><h2>Séances d’appel</h2><p>Les séances transmises attendent la clôture de la vie scolaire.</p></div><span className="counter-badge">{lifeSessions.length} séances</span></div>
+                      {lifeSessions.length===0?<div className="empty-state">Aucune séance enregistrée pour le moment.</div>:lifeSessions.map(s=><article className="life-session-row" key={s.id}>
+                        <div className="life-session-copy"><strong>{schoolClasses.find(c=>c.id===s.class_id)?.name??"Classe"}</strong><span>{formatDate(s.session_date)} · {s.period_label||"Cours"}</span><small>{s.status==="closed"?"Registre clôturé":s.status==="submitted"?"Transmis · en attente de clôture":"Brouillon"}</small></div>
+                        <div className="life-session-action"><span className={"life-status "+s.status}>{s.status==="closed"?"Clôturé":s.status==="submitted"?"À clôturer":"Brouillon"}</span>{s.status==="submitted"&&<button className="small-primary-button" onClick={()=>closeLifeSession(s.id)} disabled={lifeActionId===s.id}>{lifeActionId===s.id?"Clôture…":"Clôturer"}</button>}</div>
+                      </article>)}
+                    </section>
+                    <section className="panel life-list-panel">
+                      <div className="panel-heading"><div><h2>Justifications à examiner</h2><p>Seules les absences et les retards peuvent être justifiés.</p></div><span className="counter-badge">{lifeJustifications.length} en attente</span></div>
+                      {lifeJustifications.length===0?<div className="empty-state">Aucune justification en attente.</div>:lifeJustifications.map(j=><article className="life-justification-row" key={j.id}>
+                        <div className="life-session-copy"><strong>{j.student_name}</strong><span>{schoolClasses.find(c=>c.id===j.class_id)?.name??"Classe"} · {formatDate(j.session_date)}</span><small>{j.attendance_status==="late"?"Retard":"Absence"} · {j.reason}</small></div>
+                        <div className="life-justification-actions"><button className="small-primary-button" onClick={()=>reviewLifeJustification(j.id,"approved")} disabled={lifeActionId===j.id}>{lifeActionId===j.id?"…":"Approuver"}</button><button className="small-danger-button" onClick={()=>reviewLifeJustification(j.id,"rejected")} disabled={lifeActionId===j.id}>Rejeter</button></div>
+                      </article>)}
+                    </section>
+                  </div>
+                  <section className="panel life-audit-panel"><div className="panel-heading"><div><h2>Historique des opérations</h2><p>Journal des transmissions, clôtures et décisions.</p></div><span className="counter-badge">{lifeAuditEvents.length} événements</span></div>
+                    {lifeAuditEvents.length===0?<div className="empty-state">L’historique apparaîtra avec les premières opérations.</div>:<div className="life-audit-list">{lifeAuditEvents.map(e=><div className="life-audit-row" key={e.id}><span>{lifeEventLabel(e.event_type)}</span><small>{new Date(e.created_at).toLocaleString("fr-FR")}</small></div>)}</div>}
+                  </section>
+                  <div className="discipline-separation"><ShieldAlert size={19}/><div><strong>Absence, retard et discipline restent séparés.</strong><p>Une justification ne concerne que l’absence ou le retard. Une expulsion de cours reste une décision de l’enseignant ; une exclusion de l’établissement reste une sanction officielle de la direction. Les parents ne peuvent ni effacer ces événements ni modifier les décisions.</p></div></div>
+                </>}
+              </>}
             </section>
           )}
 
