@@ -175,6 +175,13 @@ Deno.serve(async (request: Request) => {
     }
 
     const existingUser = await findExistingUser(adminClient, body.email);
+    if (existingUser && !existingUser.email_confirmed_at) {
+      await adminClient.from("school_invitations").delete().eq("id", invitation.id);
+      return json({
+        error: "Ce compte existe déjà mais son adresse e-mail n’est pas confirmée. Demandez à la personne de confirmer son adresse avant de l’ajouter.",
+      }, 409);
+    }
+
     if (existingUser) {
       const { error: memberError } = await adminClient
         .from("school_members")
